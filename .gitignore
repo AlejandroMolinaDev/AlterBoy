@@ -23,3 +23,7 @@ Thumbs.db
 /vst3sdk/
 /vst3build/
 /dist/
+
+# Python
+__pycache__/
+*.pyc
