@@ -1,0 +1,25 @@
+# Build output
+/build/
+/out/
+/cmake-build-*/
+/.cache/
+
+# IDEs
+/.vs/
+/.vscode/
+/.idea/
+*.user
+CMakeUserPresets.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local tool downloads (pluginval, validators)
+/tools/bin/
+
+# CI scratch (validators, VST3 SDK, packaged zips)
+/tools-bin/
+/vst3sdk/
+/vst3build/
+/dist/

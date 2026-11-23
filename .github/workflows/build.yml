@@ -1,0 +1,175 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CPM_SOURCE_CACHE: ${{ github.workspace }}/.cache/CPM
+  ARTEFACTS: build/release/Metamorfo_artefacts/Release
+  PLUGINVAL_VERSION: v1.0.4
+  CLAP_VALIDATOR_VERSION: 0.3.2
+  VST3SDK_TAG: v3.8.0_build_66
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            short: win
+          - name: macos-universal
+            os: macos-latest
+            short: mac
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---------------------------------------------------------------- toolchain
+      - name: Set up MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Ninja (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ninja --no-progress -y
+
+      - name: Install Ninja (macOS)
+        if: runner.os == 'macOS'
+        run: brew list ninja >/dev/null 2>&1 || brew install ninja
+
+      - name: Cache CPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-${{ runner.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/GetCPM.cmake') }}
+
+      # ---------------------------------------------------------------- build + unit tests
+      - name: Configure
+        run: cmake --preset release
+
+      - name: Build
+        run: cmake --build --preset release --parallel
+
+      - name: Unit tests
+        run: ctest --preset release
+
+      - name: Ad-hoc code signing (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          for bundle in "$ARTEFACTS/VST3/Metamorfo.vst3" "$ARTEFACTS/AU/Metamorfo.component" \
+                        "$ARTEFACTS/CLAP/Metamorfo.clap" "$ARTEFACTS/Standalone/Metamorfo.app"; do
+            codesign --force --deep --sign - "$bundle"
+            codesign --verify --verbose "$bundle"
+          done
+
+      # ---------------------------------------------------------------- validator tools
+      - name: Cache Steinberg VST3 validator
+        id: vst3-validator-cache
+        uses: actions/cache@v4
+        with:
+          path: tools-bin/vst3-validator
+          key: vst3-validator-${{ runner.os }}-${{ env.VST3SDK_TAG }}
+
+      - name: Build Steinberg VST3 validator
+        if: steps.vst3-validator-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          git clone --quiet --depth 1 --branch "$VST3SDK_TAG" https://github.com/steinbergmedia/vst3sdk.git vst3sdk
+          git -C vst3sdk submodule update --quiet --init --depth 1 base pluginterfaces public.sdk cmake
+          cmake -S vst3sdk -B vst3build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DSMTG_ENABLE_VSTGUI_SUPPORT=OFF -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF \
+            -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=ON -DSMTG_RUN_VST_VALIDATOR=OFF
+          cmake --build vst3build --target validator
+          mkdir -p tools-bin/vst3-validator
+          cp vst3build/bin/Release/validator* tools-bin/vst3-validator/
+
+      - name: Download pluginval and clap-validator
+        shell: bash
+        run: |
+          mkdir -p tools-bin && cd tools-bin
+          base_pv="https://github.com/Tracktion/pluginval/releases/download/$PLUGINVAL_VERSION"
+          base_cv="https://github.com/free-audio/clap-validator/releases/download/$CLAP_VALIDATOR_VERSION"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            curl -fsSL -o pluginval.zip "$base_pv/pluginval_Windows.zip"
+            curl -fsSL -o clap-validator.zip "$base_cv/clap-validator-$CLAP_VALIDATOR_VERSION-windows.zip"
+            unzip -o -q pluginval.zip -d pluginval
+            unzip -o -q clap-validator.zip -d clap-validator
+          else
+            curl -fsSL -o pluginval.zip "$base_pv/pluginval_macOS.zip"
+            curl -fsSL -o clap-validator.tar.gz "$base_cv/clap-validator-$CLAP_VALIDATOR_VERSION-macos-universal.tar.gz"
+            unzip -o -q pluginval.zip -d pluginval
+            mkdir -p clap-validator && tar xzf clap-validator.tar.gz -C clap-validator
+          fi
+          find . -maxdepth 4 \( -name 'pluginval*' -o -name 'clap-validator*' \) -type f
+
+      # ---------------------------------------------------------------- validation
+      - name: Validate (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $clap = (Get-ChildItem -Recurse tools-bin/clap-validator -Filter clap-validator.exe | Select-Object -First 1).FullName
+          ./tools/ci/validate_windows.ps1 `
+            -Artefacts $env:ARTEFACTS `
+            -Pluginval tools-bin/pluginval/pluginval.exe `
+            -Vst3Validator tools-bin/vst3-validator/validator.exe `
+            -ClapValidator $clap
+
+      - name: Validate (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          clap="$(find tools-bin/clap-validator -name clap-validator -type f | head -1)"
+          chmod +x "$clap" tools-bin/vst3-validator/validator
+          bash tools/ci/validate_macos.sh "$ARTEFACTS" \
+            tools-bin/pluginval/pluginval.app/Contents/MacOS/pluginval \
+            tools-bin/vst3-validator/validator \
+            "$clap"
+
+      # ---------------------------------------------------------------- artefacts
+      - name: Package macOS bundles
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent "$ARTEFACTS/VST3/Metamorfo.vst3" dist/Metamorfo-mac-VST3.zip
+          ditto -c -k --keepParent "$ARTEFACTS/AU/Metamorfo.component" dist/Metamorfo-mac-AU.zip
+          ditto -c -k --keepParent "$ARTEFACTS/CLAP/Metamorfo.clap" dist/Metamorfo-mac-CLAP.zip
+          ditto -c -k --keepParent "$ARTEFACTS/Standalone/Metamorfo.app" dist/Metamorfo-mac-Standalone.zip
+
+      - name: Upload macOS artefacts
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Metamorfo-mac
+          path: dist/*.zip
+
+      - name: Upload Windows VST3
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Metamorfo-win-VST3
+          path: ${{ env.ARTEFACTS }}/VST3
+
+      - name: Upload Windows CLAP
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Metamorfo-win-CLAP
+          path: ${{ env.ARTEFACTS }}/CLAP
+
+      - name: Upload Windows Standalone
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Metamorfo-win-Standalone
+          path: ${{ env.ARTEFACTS }}/Standalone

@@ -1,0 +1,20 @@
+# JUCE-like style
+BasedOnStyle: LLVM
+Language: Cpp
+Standard: c++20
+ColumnLimit: 120
+IndentWidth: 4
+AccessModifierOffset: -4
+BreakBeforeBraces: Allman
+SpaceBeforeParens: NonEmptyParentheses
+SpaceAfterCStyleCast: true
+PointerAlignment: Left
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLambdasOnASingleLine: All
+BreakConstructorInitializers: AfterColon
+ConstructorInitializerIndentWidth: 4
+NamespaceIndentation: None
+FixNamespaceComments: true
+IncludeBlocks: Preserve
+SortIncludes: CaseSensitive
