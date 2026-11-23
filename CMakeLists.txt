@@ -35,7 +35,6 @@ target_compile_definitions(metamorfo_core INTERFACE
   JUCE_WEB_BROWSER=0
   JUCE_USE_CURL=0
   JUCE_REPORT_APP_USAGE=0
-  JUCE_DISPLAY_SPLASH_SCREEN=0
   JUCE_MODAL_LOOPS_PERMITTED=0)
 # Sources contain UTF-8 text (Spanish UI strings).
 target_compile_options(metamorfo_core INTERFACE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)

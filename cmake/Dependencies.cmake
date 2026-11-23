@@ -19,6 +19,10 @@ CPMAddPackage(
   GIT_TAG 3837f4a6ed2ab0ba46aba69ae5b7041c7c64ce74
   EXCLUDE_FROM_ALL YES)
 
+# Treat CLAP headers as system headers: their warnings (e.g. 500+ -Wunused-parameter
+# from clap-helpers on clang) must not drown warnings from our own code.
+set_target_properties(clap_juce_extensions clap clap-helpers PROPERTIES SYSTEM TRUE)
+
 if(METAMORFO_BUILD_TESTS)
   # Catch2 v3 (BSL-1.0).
   CPMAddPackage(

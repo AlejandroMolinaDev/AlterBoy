@@ -53,6 +53,17 @@ xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/Metamorfo.vst3
 
 Si una versión **no** recibe notas, anota cuál (VST3 o CLAP), tu versión de FL y lo que ves. Esto define si en FL se recomienda solo VST3 (SPEC §3).
 
+### 3b. Modo Robot por MIDI (la configuración que se usará en la Fase 4)
+
+En la Fase 1 la UI todavía no tiene el selector de modo, y Robot aún no cambia el audio. Esta prueba confirma que el parámetro se puede automatizar y que las notas llegan con Robot activo.
+
+1. Abre la ventana del plugin. En el menú del wrapper (flecha o engranaje arriba a la izquierda), elige **Browse parameters**. FL muestra los parámetros en el Browser.
+2. Busca **Mode**. Haz clic derecho sobre él y elige **Edit events** (o **Create automation clip**). Ponlo en **Robot**: es el valor más alto de los tres; con la rueda o el editor de eventos se ve el texto "Robot".
+3. Verifica que el **MIDI Out** sigue en el **Port 1** y que el *MIDI input port* del wrapper también está en **1**.
+4. En el **Piano roll** del canal MIDI Out, dibuja una melodía corta, por ejemplo Do4–Mi4–Sol4–Do5, con notas separadas.
+5. Dale Play con la voz sonando en el Insert. **Esperado en la Fase 1:** el display sigue cada nota de la melodía, la voz suena **sin cambios** y el automation clip de Mode no produce clicks.
+6. **Esperado a partir de la Fase 4:** la voz "canta" exactamente la melodía del piano roll. Sin notas, se queda en Do5 (MIDI 72), desplazado por PITCH.
+
 ### 4. Guardar, reabrir y robustez
 
 1. Guarda el proyecto `.flp`, ciérralo y vuelve a abrirlo. **Esperado:** el plugin carga sin errores.
@@ -75,4 +86,5 @@ Si una versión **no** recibe notas, anota cuál (VST3 o CLAP), tu versión de F
 | Passthrough idéntico | | | | |
 | Recibe MIDI (MIDI Out + port) | | | | |
 | Piano roll y prioridad de nota | | | | |
+| Mode = Robot automatizable, las notas llegan | | | | |
 | Reabrir `.flp` | | | | |

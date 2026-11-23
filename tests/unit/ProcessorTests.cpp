@@ -135,6 +135,30 @@ TEST_CASE ("Processor sanitises NaN and Inf", "[processor]")
             REQUIRE (std::isfinite (buffer.getSample (ch, i)));
 }
 
+TEST_CASE ("Processor flushes denormals coming from the input", "[processor]")
+{
+    MetamorfoProcessor p;
+    prepare (p, Set::stereo(), Set::stereo(), 64);
+
+    const float tiny = std::numeric_limits<float>::min();
+    juce::AudioBuffer<float> buffer (2, 64);
+    for (int ch = 0; ch < 2; ++ch)
+        for (int i = 0; i < 64; ++i)
+            buffer.setSample (ch, i, (i % 2 == 0 ? 0.25f : -0.25f) * tiny); // subnormal values
+    buffer.setSample (0, 10, 0.5f);                                         // normal value survives
+
+    juce::MidiBuffer midi;
+    p.processBlock (buffer, midi);
+
+    for (int ch = 0; ch < 2; ++ch)
+        for (int i = 0; i < 64; ++i)
+        {
+            const float x = buffer.getSample (ch, i);
+            REQUIRE ((x == 0.0f || std::abs (x) >= tiny));
+        }
+    CHECK (buffer.getSample (0, 10) == 0.5f);
+}
+
 TEST_CASE ("Processor publishes received MIDI notes", "[processor][midi]")
 {
     MetamorfoProcessor p;

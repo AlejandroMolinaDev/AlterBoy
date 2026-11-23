@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 #include "plugin/Parameters.h"
 #include "ui/PluginEditor.h"
@@ -112,12 +113,13 @@ void MetamorfoProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
     for (int ch = monoToStereo ? 2 : numIn; ch < numOut; ++ch)
         buffer.clear (ch, startSample, numSamples);
 
-    // Output sanitisation: never emit NaN/Inf.
+    // Output sanitisation: never emit NaN, Inf or denormals (denormals can arrive
+    // from the host input and would otherwise pass straight through).
     for (int ch = 0; ch < numOut; ++ch)
     {
         auto* data = buffer.getWritePointer (ch, startSample);
         for (int i = 0; i < numSamples; ++i)
-            if (! std::isfinite (data[i]))
+            if (! std::isfinite (data[i]) || std::abs (data[i]) < std::numeric_limits<float>::min())
                 data[i] = 0.0f;
     }
 }

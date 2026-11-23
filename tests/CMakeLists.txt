@@ -21,3 +21,11 @@ target_link_libraries(MetamorfoTests PRIVATE
 
 include("${Catch2_SOURCE_DIR}/extras/Catch.cmake")
 catch_discover_tests(MetamorfoTests DISCOVERY_MODE PRE_TEST)
+
+# Offline render host (SPEC §7 "harness de render"): WAV in -> plugin -> WAV out + JSON report.
+add_executable(MetamorfoRender render/RenderMain.cpp)
+target_compile_definitions(MetamorfoRender PRIVATE JUCE_STANDALONE_APPLICATION=1)
+target_link_libraries(MetamorfoRender PRIVATE
+  metamorfo_core
+  juce::juce_audio_formats
+  juce::juce_recommended_config_flags)

@@ -31,6 +31,14 @@ La especificación completa está en [SPEC.md](SPEC.md). Este archivo lleva el e
 - **Fase 4:** evaluar `CLAP_PROCESS_EVENTS_RESOLUTION_SAMPLES` para automatización precisa en CLAP.
 - **Fase 6:** probar el escalado DPI en FL Studio en Windows. Desde JUCE 8.0.13 hay reportes de cambios en la conciencia de DPI del proceso host.
 - **Fase 6:** comprobar que `getProgramName` y el sistema de presets propio no chocan con los presets nativos de FL.
+- **Auditoría de pruebas (2026-11-23, [TEST_REPORT.md](TEST_REPORT.md)):** brechas G1 a G7 por resolver en sus fases:
+  - **G1 (Fases 2 a 6):** portar cada prueba DSP del SPEC §7 a Catch2, con un generador de voz en C++, y correr `tools/analysis/run_audit.py --phase N` en el CI, fallando ante cualquier ✘.
+  - **G2 (Fase 3):** infraestructura de suavizado: punteros atómicos cacheados + `juce::SmoothedValue`.
+  - **G3 (Fase 2):** publicar la f0 y la confianza del detector en atómicos y en el JSON de `MetamorfoRender`.
+  - **G4 (Fase 3):** test en Catch2 que **mida** la latencia con un impulso y MIX 0 %, a 44.1, 48 y 96 kHz.
+  - **G5 (Fase 4):** MIDI con precisión de muestra (ver arriba).
+  - **G6 (Fases 2 a 5):** volver a medir la CPU con el motor real y añadir al CI un benchmark con límite (< 2 %, buffer 128).
+- **CI:** `ilammy/msvc-dev-cmd@v1` sigue en Node 20 (no hay versión para Node 24). Si GitHub retira Node 20, reemplazarlo por `Launch-VsDevShell.ps1`.
 - **CI:** añadir ccache o sccache si el tiempo de build crece.
 - **CI:** la slice x86_64 de macOS solo se verifica con `lipo`, porque el runner es arm64. Probarla en un Mac Intel o con Rosetta cuando sea posible.
 
@@ -45,8 +53,9 @@ La especificación completa está en [SPEC.md](SPEC.md). Este archivo lleva el e
 | Validador | Prueba | Resultado | Motivo |
 |---|---|---|---|
 | clap-validator 0.3.2 | `preset-discovery-*` (3) | Omitidas por el validador | El plugin no implementa la fábrica de preset-discovery de CLAP. Se reevaluará en la Fase 6. |
+| pluginval 1.0.4 | Formato CLAP | No aplica | pluginval no carga CLAP ("No types found"). El validador oficial del CLAP es clap-validator. |
 
-No hay ninguna otra excepción. pluginval (nivel 10) y el validador VST3 de Steinberg (47/47) pasan completos.
+No hay ninguna otra excepción. pluginval (nivel 10, VST3 y AU), auval y el validador VST3 de Steinberg (47/47) pasan completos.
 
 ## Decisiones
 
@@ -60,4 +69,8 @@ No hay ninguna otra excepción. pluginval (nivel 10) y el validador VST3 de Stei
 | Fase 1 | Runtime MSVC estático (`/MT`) | El usuario no necesita instalar el VC++ Redistributable. |
 | Fase 1 | macOS 12.0 o superior, binario Universal, firma ad-hoc | Es el defecto de JUCE 9. No hay cuenta de pago para notarizar. |
 | Fase 1 | `getProgramName(0)` devuelve "Default" | Lo exige el validador VST3 de Steinberg. Los presets propios llegan en la Fase 6. |
+| Auditoría | Parámetros con pasos decimales exactos (`steppedRange`) | En arm64, el ajuste por pasos de JUCE dejaba residuos (0 → 1.79e-7). Es el bug B2. |
+| Auditoría | El sanitizador también elimina los denormales | Venían desde la entrada y pasaban a la salida (B4). |
+| Auditoría | Headers de CLAP marcados `SYSTEM` | Sus warnings (más de 500 en clang) tapaban los nuestros (B6). |
+| Auditoría | Harness: `MetamorfoRender` (C++) + `tools/analysis` (Python con numpy y scipy) | Mide f0, formante, armónicos, latencia, clicks, robustez, alocaciones y CPU sobre el procesador real. |
 | Fase 1 | Artefactos de macOS en zip creados con `ditto` | `upload-artifact` no conserva los permisos ni la estructura de los bundles. |

@@ -23,11 +23,18 @@ ctest --preset release            # unit tests (Linux headless: xvfb-run -a ctes
 - Artefacts: `build/release/Metamorfo_artefacts/Release/{VST3,CLAP,AU,Standalone}`.
 - CI: `.github/workflows/build.yml` (windows-latest + macos-latest universal), validators via
   `tools/ci/validate_windows.ps1` and `tools/ci/validate_macos.sh`.
+- DSP audit (needs numpy + scipy): build target `MetamorfoRender`, then
+  `python tools/analysis/run_audit.py --render build/release/tests/MetamorfoRender --phase N`
+  → `tests/render/output/` (audit_table.md + listening WAVs). ✘ = bug, ⏸ = later phase, ✔* = trivial pass.
+  `MetamorfoRender` also counts heap allocations inside processBlock (must stay 0).
 
 ## Unbreakable rules
 - **Real time** (`processBlock` and everything it calls): no allocation, no locks, no I/O, no logging,
   no exceptions. Allocate in `prepareToPlay`. `juce::ScopedNoDenormals`. Output sanitised (no NaN/Inf).
 - **No mutable static state** (FL runs many instances on several threads).
+- Output sanitiser zeroes NaN, Inf **and denormals** (input denormals would pass through otherwise).
+- Never compare parameter floats with platform-dependent residues: stepped params use `steppedRange`
+  (exact decimal steps; arm64 regression B2).
 - Never trust the host block size: process in chunks of at most the prepared size (FL can exceed it).
 - Smoothed parameters (no zipper noise). Latency is fixed per sample rate and always reported
   with `setLatencySamples()` in `prepareToPlay`; the dry path is delayed by the same amount.
@@ -57,8 +64,10 @@ src/dsp/          JUCE-free RT DSP (static lib metamorfo_dsp, strict warnings)
 src/plugin/       PluginProcessor, Parameters
 src/ui/           PluginEditor
 tests/unit/       Catch2 tests (own copy of JUCE + core, custom main with ScopedJuceInitialiser_GUI)
+tests/render/     MetamorfoRender: offline host (WAV in/out, params, MIDI, JSON report, alloc probe)
+tools/analysis/   Python audit: signals.py (synthetic voice), metrics.py, run_audit.py
 tools/ci/         validation scripts used by CI
-docs/             SPEC, ROADMAP, TESTING_FL
+docs/             SPEC, ROADMAP, TESTING_FL, TEST_REPORT (latest audit)
 ```
 - `metamorfo_core` is an INTERFACE library (sources + JUCE modules) linked by both the plugin and
   the tests, so tests run without any host.
@@ -73,6 +82,7 @@ docs/             SPEC, ROADMAP, TESTING_FL
   because `acceptsMidi()` is true. `MidiPitchControl` = last-note-priority stack, fixed storage.
 - License: **AGPLv3** (`LICENSE.md`).
 
-## Validation status (phase 1, Linux local check; CI is authoritative)
-pluginval strictness 10: pass · Steinberg validator v3.8.0: 47/47 · clap-validator 0.3.2: 18 pass,
-3 skipped (no preset-discovery factory, N/A) · auval: CI only.
+## Validation status (audit 2026-11-23, see docs/TEST_REPORT.md)
+pluginval strictness 10: VST3 + AU pass (pluginval cannot load CLAP) · Steinberg validator 3.8.0: 47/47 ·
+clap-validator 0.3.2: 18 pass, 3 skipped (no preset-discovery, N/A) · auval aumf: pass (macOS CI) ·
+Catch2 17/17 · DSP audit: 0 ✘ (26 ⏸ pending later phases).

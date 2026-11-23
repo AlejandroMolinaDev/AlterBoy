@@ -11,10 +11,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$vst3 = Join-Path $Artefacts 'VST3\Metamorfo.vst3'
-$clap = Join-Path $Artefacts 'CLAP\Metamorfo.clap'
+$vst3 = (Resolve-Path (Join-Path $Artefacts 'VST3\Metamorfo.vst3')).Path
+$clap = (Resolve-Path (Join-Path $Artefacts 'CLAP\Metamorfo.clap')).Path
 
-function Invoke-Checked([string] $title, [scriptblock] $command) {
+# Console tools: PowerShell waits for them and sets $LASTEXITCODE.
+function Invoke-Console([string] $title, [scriptblock] $command) {
     Write-Host "::group::$title"
     & $command
     $code = $LASTEXITCODE
@@ -22,10 +23,22 @@ function Invoke-Checked([string] $title, [scriptblock] $command) {
     if ($code -ne 0) { throw "$title failed with exit code $code" }
 }
 
-Invoke-Checked 'pluginval VST3 (strictness 10)' {
-    & $Pluginval --strictness-level 10 --verbose --validate $vst3
+# GUI-subsystem tools (pluginval.exe): PowerShell does NOT wait for them and
+# $LASTEXITCODE stays empty, so start the process explicitly and wait.
+function Invoke-Gui([string] $title, [string] $exe, [string[]] $arguments) {
+    Write-Host "::group::$title"
+    $out = New-TemporaryFile
+    $err = New-TemporaryFile
+    $process = Start-Process -FilePath $exe -ArgumentList $arguments -Wait -NoNewWindow -PassThru `
+        -RedirectStandardOutput $out.FullName -RedirectStandardError $err.FullName
+    Get-Content $out.FullName, $err.FullName | Write-Host
+    Write-Host '::endgroup::'
+    if ($process.ExitCode -ne 0) { throw "$title failed with exit code $($process.ExitCode)" }
 }
-Invoke-Checked 'Steinberg VST3 validator' { & $Vst3Validator $vst3 }
-Invoke-Checked 'clap-validator' { & $ClapValidator validate $clap }
+
+Invoke-Gui 'pluginval VST3 (strictness 10)' $Pluginval @(
+    '--strictness-level', '10', '--verbose', '--validate', "`"$vst3`"")
+Invoke-Console 'Steinberg VST3 validator' { & $Vst3Validator $vst3 }
+Invoke-Console 'clap-validator' { & $ClapValidator validate $clap }
 
 Write-Host 'All Windows validations passed.'
