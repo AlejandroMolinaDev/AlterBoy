@@ -209,6 +209,21 @@ TEST_CASE ("Processor exposes the frozen parameter contract", "[processor][param
     CHECK (state.getRawParameterValue (id::midiReference)->load() == 60.0f);
     CHECK (state.getRawParameterValue (id::portamento)->load() == 0.0f);
 
+    // Stepped parameters must land on exact decimal values on every platform
+    // (regression: arm64 produced 1.79e-7 for the pitch default).
+    for (const char* paramId : { id::pitch, id::formant })
+    {
+        auto* param = state.getParameter (paramId);
+        for (int step = -120; step <= 120; ++step)
+        {
+            const float expected = static_cast<float> (step) / 10.0f;
+            param->setValueNotifyingHost (param->convertTo0to1 (expected));
+            REQUIRE (state.getRawParameterValue (paramId)->load() == expected);
+        }
+        param->setValueNotifyingHost (param->getDefaultValue());
+        CHECK (state.getRawParameterValue (paramId)->load() == 0.0f);
+    }
+
     // Text round-trip for the MIDI reference (shown as a note name).
     auto* reference = state.getParameter (id::midiReference);
     const auto text = reference->getText (reference->getValue(), 32);

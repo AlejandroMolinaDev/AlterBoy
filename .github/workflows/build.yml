@@ -93,7 +93,10 @@ jobs:
             -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=ON -DSMTG_RUN_VST_VALIDATOR=OFF
           cmake --build vst3build --target validator
           mkdir -p tools-bin/vst3-validator
-          cp vst3build/bin/Release/validator* tools-bin/vst3-validator/
+          # Output dir differs per platform (bin/ on Windows, bin/Release/ elsewhere).
+          find vst3build/bin \( -name validator -o -name validator.exe \) -type f \
+            -exec cp {} tools-bin/vst3-validator/ \;
+          ls -la tools-bin/vst3-validator
 
       - name: Download pluginval and clap-validator
         shell: bash
