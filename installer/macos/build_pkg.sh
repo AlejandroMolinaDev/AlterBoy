@@ -24,10 +24,13 @@ COMPONENTS="$(mktemp -t metamorfo-components).plist"
 pkgbuild --analyze --root "$STAGE" "$COMPONENTS"
 i=0
 while /usr/libexec/PlistBuddy -c "Print :$i" "$COMPONENTS" >/dev/null 2>&1; do
-  /usr/libexec/PlistBuddy -c "Set :$i:BundleIsRelocatable false" "$COMPONENTS"
+  # The key is not always written by --analyze: delete if present, then add it.
+  /usr/libexec/PlistBuddy -c "Delete :$i:BundleIsRelocatable" "$COMPONENTS" >/dev/null 2>&1 || true
+  /usr/libexec/PlistBuddy -c "Add :$i:BundleIsRelocatable bool false" "$COMPONENTS"
   i=$((i + 1))
 done
 echo "Non-relocatable bundles: $i"
+plutil -p "$COMPONENTS"
 
 mkdir -p "$ROOT_DIR/dist"
 OUT="$ROOT_DIR/dist/Metamorfo-$VERSION-macOS.pkg"
