@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <new>
 #include <cmath>
+#include <algorithm>
 #include <iostream>
 #include <random>
 #include <vector>
@@ -194,6 +195,8 @@ int run (const Options& o)
     midi.ensureSize (4096);
 
     std::int64_t nanCount = 0, infCount = 0, denormalCount = 0;
+    std::vector<double> detectedF0, outputF0;
+    int analysisPolls = 0, voicedPolls = 0;
     double peak = 0.0;
     double processSeconds = 0.0;
     int numBlocks = 0, maxBlock = 0;
@@ -242,6 +245,16 @@ int run (const Options& o)
 
             if (pass == o.repeat - 1)
             {
+                // Poll the analysis display like the editor does (G3: detector is measurable).
+                const auto& analysis = processor.getAnalysisDisplay();
+                ++analysisPolls;
+                if (analysis.voiced.load())
+                {
+                    ++voicedPolls;
+                    if (analysis.inputF0.load() > 0.0f) detectedF0.push_back (analysis.inputF0.load());
+                    if (analysis.outputF0.load() > 0.0f) outputF0.push_back (analysis.outputF0.load());
+                }
+
                 for (int ch = 0; ch < numOut; ++ch)
                 {
                     const float* data = block.getReadPointer (ch);
@@ -302,6 +315,14 @@ int run (const Options& o)
     json->setProperty ("process_seconds", processSeconds);
     json->setProperty ("audio_seconds", audioSeconds);
     json->setProperty ("cpu_percent_of_core", 100.0 * processSeconds / audioSeconds);
+    const auto median = [] (std::vector<double> v) {
+        if (v.empty()) return 0.0;
+        std::nth_element (v.begin(), v.begin() + static_cast<long> (v.size() / 2), v.end());
+        return v[v.size() / 2];
+    };
+    json->setProperty ("detected_f0_median", median (detectedF0));
+    json->setProperty ("output_f0_median", median (outputF0));
+    json->setProperty ("voiced_ratio", analysisPolls > 0 ? static_cast<double> (voicedPolls) / analysisPolls : 0.0);
     const juce::var report (json);
 
     if (o.report != juce::File())

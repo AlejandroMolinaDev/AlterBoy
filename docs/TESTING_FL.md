@@ -113,3 +113,12 @@ En la Fase 1 la UI todavía no tiene el selector de modo, y Robot aún no cambia
 | Piano roll y prioridad de nota | | | | |
 | Mode = Robot automatizable, las notas llegan | | | | |
 | Reabrir `.flp` | | | | |
+
+---
+
+## Fase 2: detector de nota
+
+1. Inserta Metamorfo en una pista de voz y dale Play.
+2. **Esperado:** la línea **ENTRADA** muestra la nota cantada con sus cents, por ejemplo `A3 +12¢`. Debe ser estable en las notas sostenidas y sin saltos de octava.
+3. En respiraciones, sibilantes ("s", "sh") y silencios muestra `--`.
+4. En la Fase 2, **SALIDA** coincide con ENTRADA porque todavía no se procesa el audio.

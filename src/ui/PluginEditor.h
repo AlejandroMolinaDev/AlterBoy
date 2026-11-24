@@ -37,6 +37,7 @@ private:
     juce::Label noteCaption_;
     juce::Label details_;
     juce::Label info_;
+    juce::Label pitch_;
 
     int shownNote_ = -2;
     int shownHeld_ = -2;

@@ -20,6 +20,18 @@ juce::String noteToText (int note)
     return juce::MidiMessage::getMidiNoteName (note, true, true, 4) + "  (" + juce::String (note) + ")";
 }
 
+// "A3 +12¢" for a frequency, "--" when unvoiced.
+juce::String pitchToText (float hz)
+{
+    if (hz <= 0.0f)
+        return "--";
+    const double midi = 69.0 + 12.0 * std::log2 (hz / 440.0);
+    const int nearest = static_cast<int> (std::lround (midi));
+    const int cents = static_cast<int> (std::lround ((midi - nearest) * 100.0));
+    return juce::MidiMessage::getMidiNoteName (nearest, true, true, 4)
+           + (cents >= 0 ? " +" : " ") + juce::String (cents) + utf8 ("¢");
+}
+
 juce::String layoutToText (const juce::AudioChannelSet& set)
 {
     if (set == juce::AudioChannelSet::mono())
@@ -52,11 +64,12 @@ MetamorfoEditor::MetamorfoEditor (MetamorfoProcessor& owner)
     setup (noteValue_, 44.0f, kAccent, juce::Justification::centred);
     setup (details_, 15.0f, kText, juce::Justification::centred);
     setup (info_, 13.0f, kDim, juce::Justification::centredLeft);
+    setup (pitch_, 15.0f, kAccent, juce::Justification::centred);
 
     title_.setText ("METAMORFO  " METAMORFO_VERSION_STRING, juce::dontSendNotification);
     noteCaption_.setText (utf8 ("ÚLTIMA NOTA MIDI RECIBIDA"), juce::dontSendNotification);
 
-    setSize (600, 220);
+    setSize (600, 244);
     refreshStaticInfo();
     timerCallback();
     startTimerHz (30);
@@ -80,6 +93,7 @@ void MetamorfoEditor::resized()
     title_.setBounds (area.removeFromTop (28));
     area.removeFromTop (8);
     info_.setBounds (area.removeFromBottom (22));
+    pitch_.setBounds (area.removeFromBottom (22));
     noteCaption_.setBounds (area.removeFromTop (20));
     details_.setBounds (area.removeFromBottom (24));
     noteValue_.setBounds (area);
@@ -101,6 +115,12 @@ void MetamorfoEditor::timerCallback()
     // Layout / sample rate can change while the editor is open: refresh ~2x per second.
     if (++ticks_ % 15 == 0)
         refreshStaticInfo();
+
+    const auto& analysis = processor_.getAnalysisDisplay();
+    const float inHz = analysis.inputF0.load (std::memory_order_relaxed);
+    const float outHz = analysis.outputF0.load (std::memory_order_relaxed);
+    pitch_.setText (utf8 ("ENTRADA ") + pitchToText (inHz) + utf8 ("   →   SALIDA ") + pitchToText (outHz),
+                    juce::dontSendNotification);
 
     const auto& activity = processor_.getMidiActivity();
     const int note = activity.lastNote.load (std::memory_order_relaxed);

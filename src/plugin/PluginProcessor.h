@@ -7,6 +7,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "dsp/MidiPitchControl.h"
+#include "dsp/PitchDetector.h"
 
 namespace metamorfo
 {
@@ -20,6 +21,15 @@ struct MidiActivity
     std::atomic<int> lastChannel { 0 };
     std::atomic<int> heldNote { -1 };
     std::atomic<std::uint32_t> eventCount { 0 };
+};
+
+// Analysis snapshot for the note display, written by the audio thread.
+struct AnalysisDisplay
+{
+    std::atomic<float> inputF0 { 0.0f };  // detected f0 in Hz, 0 when unvoiced
+    std::atomic<float> outputF0 { 0.0f }; // f0 after processing, 0 when unvoiced
+    std::atomic<float> confidence { 0.0f };
+    std::atomic<bool> voiced { false };
 };
 
 class MetamorfoProcessor final : public juce::AudioProcessor,
@@ -61,6 +71,7 @@ public:
     // Metamorfo --------------------------------------------------------------
     juce::AudioProcessorValueTreeState& getParameters() noexcept { return parameters_; }
     const MidiActivity& getMidiActivity() const noexcept { return midiActivity_; }
+    const AnalysisDisplay& getAnalysisDisplay() const noexcept { return analysisDisplay_; }
 
     // Human-readable plugin format ("VST3", "CLAP", "AU", "Standalone", ...).
     juce::String getFormatName() const;
@@ -78,6 +89,8 @@ private:
     juce::AudioProcessorValueTreeState parameters_;
     dsp::MidiPitchControl midiPitch_;
     MidiActivity midiActivity_;
+    dsp::PitchDetector pitchDetector_;
+    AnalysisDisplay analysisDisplay_;
 
     std::atomic<double> preparedSampleRate_ { 0.0 };
     std::atomic<int> preparedBlockSize_ { 0 };

@@ -16,7 +16,8 @@ include(cmake/Dependencies.cmake)
 # metamorfo_dsp: JUCE-free real-time DSP building blocks (strict warnings).
 # ---------------------------------------------------------------------------
 add_library(metamorfo_dsp STATIC
-  src/dsp/MidiPitchControl.cpp)
+  src/dsp/MidiPitchControl.cpp
+  src/dsp/PitchDetector.cpp)
 target_include_directories(metamorfo_dsp PUBLIC src)
 target_link_libraries(metamorfo_dsp PRIVATE metamorfo_warnings)
 

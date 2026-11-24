@@ -102,8 +102,23 @@ class Audit:
                      "|error| < 5 ¢", abs(err) < 5, "harness",
                      "valida la herramienta de medición, no el plugin")
         for f in (80, 150, 300, 600, 1000):
-            self.add("Detector", f"Detector del plugin · seno {f} Hz", "no expuesto (no existe)",
-                     "|error| < 5 ¢", False, "detector")
+            _, rep = self.render(s.sine(f, 1.5, sr), sr, {})
+            med = rep.get("detected_f0_median", 0.0)
+            err = m.cents(med, f) if med > 0 else float("nan")
+            self.add("Detector", f"Detector del plugin · seno {f} Hz",
+                     f"{med:.2f} Hz ({err:+.2f} ¢), sonoro {100 * rep.get('voiced_ratio', 0):.0f} %" if med > 0
+                     else "sin estimación", "|error| < 5 ¢", med > 0 and abs(err) < 5, "detector")
+        for note in (45, 57, 69):
+            f = s.midi_to_hz(note)
+            _, rep = self.render(s.voice_note(f, 1.5, sr), sr, {})
+            med = rep.get("detected_f0_median", 0.0)
+            err = m.cents(med, f) if med > 0 else float("nan")
+            self.add("Detector", f"Detector del plugin · voz sintética {f:.1f} Hz",
+                     f"{err:+.2f} ¢" if med > 0 else "sin estimación", "|error| < 5 ¢, sin errores de octava",
+                     med > 0 and abs(err) < 5, "detector")
+        _, rep = self.render(s.white_noise(1.5, sr), sr, {})
+        self.add("Detector", "Ruido blanco → no sonoro", f"sonoro {100 * rep.get('voiced_ratio', 0):.0f} %",
+                 "< 5 %", rep.get("voiced_ratio", 1) < 0.05, "detector")
 
     def transpose(self):
         sr = 48000

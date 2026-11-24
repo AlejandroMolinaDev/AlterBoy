@@ -16,6 +16,8 @@ MetamorfoProcessor::MetamorfoProcessor()
                                 .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       parameters_ (*this, nullptr, kStateType, params::createLayout())
 {
+    // Some hosts call processBlock before prepareToPlay: start from a valid state.
+    pitchDetector_.prepare (44100.0);
 }
 
 void MetamorfoProcessor::prepareToPlay (double sampleRate, int maximumExpectedSamplesPerBlock)
@@ -25,6 +27,7 @@ void MetamorfoProcessor::prepareToPlay (double sampleRate, int maximumExpectedSa
 
     midiPitch_.reset();
     midiActivity_.heldNote.store (-1, std::memory_order_relaxed);
+    pitchDetector_.prepare (sampleRate);
 
     // Latency is fixed per sample rate and always reported (FL Studio PDC).
     setLatencySamples (getEngineLatencySamples());
@@ -112,6 +115,20 @@ void MetamorfoProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
     // Any other output channel without a source is cleared.
     for (int ch = monoToStereo ? 2 : numIn; ch < numOut; ++ch)
         buffer.clear (ch, startSample, numSamples);
+
+    // Pitch analysis on the mono sum of the input (SPEC §2: stereo analyses the sum).
+    const float* left = buffer.getReadPointer (0, startSample);
+    const float* right = numIn > 1 ? buffer.getReadPointer (1, startSample) : left;
+    for (int i = 0; i < numSamples; ++i)
+    {
+        const float mono = 0.5f * (left[i] + right[i]);
+        pitchDetector_.push (std::isfinite (mono) ? mono : 0.0f);
+    }
+    const auto& estimate = pitchDetector_.latest();
+    analysisDisplay_.inputF0.store (estimate.f0, std::memory_order_relaxed);
+    analysisDisplay_.outputF0.store (estimate.f0, std::memory_order_relaxed); // phase 2: no processing yet
+    analysisDisplay_.confidence.store (1.0f - std::min (1.0f, estimate.aperiodicity), std::memory_order_relaxed);
+    analysisDisplay_.voiced.store (estimate.voiced, std::memory_order_relaxed);
 
     // Output sanitisation: never emit NaN, Inf or denormals (denormals can arrive
     // from the host input and would otherwise pass straight through).
