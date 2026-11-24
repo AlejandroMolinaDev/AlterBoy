@@ -32,14 +32,16 @@ La especificación completa está en [SPEC.md](SPEC.md). Este archivo lleva el e
 - **Fase 6:** probar el escalado DPI en FL Studio en Windows. Desde JUCE 8.0.13 hay reportes de cambios en la conciencia de DPI del proceso host.
 - **Fase 6:** comprobar que `getProgramName` y el sistema de presets propio no chocan con los presets nativos de FL.
 - **Auditoría de pruebas (2026-11-23, [TEST_REPORT.md](TEST_REPORT.md)):** brechas G1 a G7 por resolver en sus fases:
-  - **G1 (Fases 2 a 6):** portar cada prueba DSP del SPEC §7 a Catch2, con un generador de voz en C++, y correr `tools/analysis/run_audit.py --phase N` en el CI, fallando ante cualquier ✘.
+  - **G1 (Fases 2 a 6):** portar cada prueba DSP del SPEC §7 a Catch2, con un generador de voz en C++. *Hecho el 2026-11-24:* el CI de macOS ya corre `run_audit.py --phase 1 --fail-on-x`. **Subir `--phase` en `build.yml` al cerrar cada fase.**
   - **G2 (Fase 3):** infraestructura de suavizado: punteros atómicos cacheados + `juce::SmoothedValue`.
   - **G3 (Fase 2):** publicar la f0 y la confianza del detector en atómicos y en el JSON de `MetamorfoRender`.
-  - **G4 (Fase 3):** test en Catch2 que **mida** la latencia con un impulso y MIX 0 %, a 44.1, 48 y 96 kHz.
+  - ~~**G4:** test que mida la latencia~~ → hecho (`tests/unit/LatencyTests.cpp`).
   - **G5 (Fase 4):** MIDI con precisión de muestra (ver arriba).
   - **G6 (Fases 2 a 5):** volver a medir la CPU con el motor real y añadir al CI un benchmark con límite (< 2 %, buffer 128).
 - **CI:** `ilammy/msvc-dev-cmd@v1` sigue en Node 20 (no hay versión para Node 24). Si GitHub retira Node 20, reemplazarlo por `Launch-VsDevShell.ps1`.
 - **CI:** añadir ccache o sccache si el tiempo de build crece.
+- **Dependencia:** clap-juce-extensions dispara en Debug su propia aserción `FIXME: Handle bypass and deactivated states` (I1, inocua en Release). Revisarla cuando se actualice el commit fijado.
+- **Prueba en FL:** la parte automatizable ya corre en el CI (host probes VST3 y CLAP). Para aceptar la Fase 1 solo falta la "Prueba rápida" de [TESTING_FL.md](TESTING_FL.md).
 - **CI:** la slice x86_64 de macOS solo se verifica con `lipo`, porque el runner es arm64. Probarla en un Mac Intel o con Rosetta cuando sea posible.
 
 ## Fuera de alcance
@@ -72,5 +74,6 @@ No hay ninguna otra excepción. pluginval (nivel 10, VST3 y AU), auval y el vali
 | Auditoría | Parámetros con pasos decimales exactos (`steppedRange`) | En arm64, el ajuste por pasos de JUCE dejaba residuos (0 → 1.79e-7). Es el bug B2. |
 | Auditoría | El sanitizador también elimina los denormales | Venían desde la entrada y pasaban a la salida (B4). |
 | Auditoría | Headers de CLAP marcados `SYSTEM` | Sus warnings (más de 500 en clang) tapaban los nuestros (B6). |
+| 2026-11-24 | Host probe de binarios (VST3 vía JUCE, CLAP con un host propio), tests de comportamiento de host, sanitizers (ASan, UBSan, TSan) en el CI | Verifica sin FL todo lo automatizable, incluida la entrada MIDI de los dos formatos. |
 | Auditoría | Harness: `MetamorfoRender` (C++) + `tools/analysis` (Python con numpy y scipy) | Mide f0, formante, armónicos, latencia, clicks, robustez, alocaciones y CPU sobre el procesador real. |
 | Fase 1 | Artefactos de macOS en zip creados con `ditto` | `upload-artifact` no conserva los permisos ni la estructura de los bundles. |

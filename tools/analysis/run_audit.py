@@ -5,7 +5,7 @@ allocations and CPU.
 
 Usage:
   python tools/analysis/run_audit.py --render build/release/tests/MetamorfoRender \
-      --out tests/render/output --phase 1
+      --out tests/render/output --phase 1 [--fail-on-x]
 
 Each result is ✔ (passes), ✔* (passes only because the feature does not exist yet),
 ✘ (fails although the feature should already work) or ⏸ (fails because the feature
@@ -339,6 +339,8 @@ def main():
     ap.add_argument("--render", required=True, type=Path)
     ap.add_argument("--out", default=Path("tests/render/output"), type=Path)
     ap.add_argument("--phase", default=1, type=int)
+    ap.add_argument("--fail-on-x", action="store_true",
+                    help="exit with code 1 if any check is ✘ (⏸ and ✔* never fail)")
     args = ap.parse_args()
 
     audit = Audit(args.render.resolve(), args.out.resolve(), args.phase)
@@ -347,6 +349,11 @@ def main():
                  audit.cpu, audit.realtime):
         step()
     audit.write()
+
+    failed = [r for r in audit.rows if r["status"] == "✘"]
+    if args.fail_on_x and failed:
+        print(f"FAIL: {len(failed)} check(s) marked ✘", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

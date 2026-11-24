@@ -62,8 +62,26 @@ jobs:
       - name: Build
         run: cmake --build --preset release --parallel
 
-      - name: Unit tests
+      - name: Unit tests + host probes (VST3 / CLAP binaries)
         run: ctest --preset release
+
+      - name: DSP audit (synthetic signals, fails on any ✘)
+        if: runner.os == 'macOS'
+        run: |
+          python3 -m venv .venv-audit
+          .venv-audit/bin/pip install --quiet -r tools/analysis/requirements.txt
+          .venv-audit/bin/python tools/analysis/run_audit.py \
+            --render build/release/tests/MetamorfoRender --out tests/render/output --phase 1 --fail-on-x
+
+      - name: Upload DSP audit table
+        if: runner.os == 'macOS' && always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: dsp-audit
+          path: |
+            tests/render/output/audit_table.md
+            tests/render/output/audit_results.json
+          if-no-files-found: ignore
 
       - name: Ad-hoc code signing (macOS)
         if: runner.os == 'macOS'
@@ -176,3 +194,37 @@ jobs:
         with:
           name: Metamorfo-win-Standalone
           path: ${{ env.ARTEFACTS }}/Standalone
+
+  # Quality gate: AddressSanitizer + UBSan (all tests incl. host probes) and
+  # ThreadSanitizer (unit + multi-thread host-behaviour tests). No artefacts.
+  linux-sanitizers:
+    name: linux-sanitizers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ninja-build xvfb libasound2-dev libx11-dev libxrandr-dev \
+            libxinerama-dev libxcursor-dev libxi-dev libegl-dev libgl-dev libfreetype-dev libfontconfig1-dev
+          # ThreadSanitizer cannot map its shadow memory with the runner's default ASLR entropy.
+          sudo sysctl vm.mmap_rnd_bits=28
+
+      - name: Cache CPM dependencies
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-${{ runner.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/GetCPM.cmake') }}
+
+      - name: AddressSanitizer + UBSan
+        run: |
+          cmake --preset asan
+          cmake --build --preset asan --parallel
+          xvfb-run -a ctest --preset asan
+
+      - name: ThreadSanitizer
+        run: |
+          cmake --preset tsan
+          cmake --build --preset tsan --target MetamorfoTests --parallel
+          xvfb-run -a ctest --preset tsan -E host_probe

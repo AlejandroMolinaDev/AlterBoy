@@ -7,31 +7,18 @@
 #include "plugin/Parameters.h"
 #include "plugin/PluginProcessor.h"
 
+#include "TestHelpers.h"
+
 using metamorfo::MetamorfoProcessor;
+using metamorfo::test::makeLayout;
+using metamorfo::test::testSignal;
 using Set = juce::AudioChannelSet;
 
 namespace
 {
-juce::AudioProcessor::BusesLayout makeLayout (const Set& in, const Set& out)
-{
-    juce::AudioProcessor::BusesLayout layout;
-    layout.inputBuses.add (in);
-    layout.outputBuses.add (out);
-    return layout;
-}
-
-float testSignal (int channel, int sampleIndex)
-{
-    // Deterministic, channel-dependent, non-trivial values.
-    return 0.5f * std::sin (0.013f * static_cast<float> (sampleIndex) * static_cast<float> (channel + 1))
-           + 0.001f * static_cast<float> (channel);
-}
-
 void prepare (MetamorfoProcessor& p, const Set& in, const Set& out, int blockSize, double rate = 48000.0)
 {
-    REQUIRE (p.setBusesLayout (makeLayout (in, out)));
-    p.setRateAndBufferSizeDetails (rate, blockSize);
-    p.prepareToPlay (rate, blockSize);
+    REQUIRE (metamorfo::test::tryPrepare (p, in, out, blockSize, rate));
 }
 
 // Processes `total` samples split into the given block sizes; checks the output.

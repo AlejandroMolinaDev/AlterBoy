@@ -27,6 +27,11 @@ ctest --preset release            # unit tests (Linux headless: xvfb-run -a ctes
   `python tools/analysis/run_audit.py --render build/release/tests/MetamorfoRender --phase N`
   → `tests/render/output/` (audit_table.md + listening WAVs). ✘ = bug, ⏸ = later phase, ✔* = trivial pass.
   `MetamorfoRender` also counts heap allocations inside processBlock (must stay 0).
+  CI runs it with `--fail-on-x`; bump `--phase` in build.yml when a phase is closed.
+- Sanitizers (Linux/macOS): `cmake --preset asan|tsan`, build, `xvfb-run -a ctest --preset asan|tsan`
+  (tsan: build target MetamorfoTests, run with `-E host_probe`). CI job `linux-sanitizers`.
+- Host probe: `MetamorfoHostProbe vst3|clap <path>` loads the BUILT binaries like a DAW
+  (CTest `host_probe_vst3` / `host_probe_clap`; checks MIDI input bus / CLAP MIDI note port).
 
 ## Unbreakable rules
 - **Real time** (`processBlock` and everything it calls): no allocation, no locks, no I/O, no logging,
@@ -39,6 +44,8 @@ ctest --preset release            # unit tests (Linux headless: xvfb-run -a ctes
 - Smoothed parameters (no zipper noise). Latency is fixed per sample rate and always reported
   with `setLatencySamples()` in `prepareToPlay`; the dry path is delayed by the same amount.
 - UI reads audio state only through atomics; closing the editor never affects audio.
+- Tests that delete an editor must call `processor.editorBeingDeleted (editor)` first (JUCE 9 host
+  protocol). Test threads must be joined via RAII (`StopAndJoin`), never after a REQUIRE.
 - **Legal (SPEC §1):** no third-party product/brand names in code, UI, presets or user docs.
   Only permissive deps (MIT/BSD/Apache/BSL). Keep `THIRD_PARTY_LICENSES.md` current.
 
@@ -65,6 +72,7 @@ src/plugin/       PluginProcessor, Parameters
 src/ui/           PluginEditor
 tests/unit/       Catch2 tests (own copy of JUCE + core, custom main with ScopedJuceInitialiser_GUI)
 tests/render/     MetamorfoRender: offline host (WAV in/out, params, MIDI, JSON report, alloc probe)
+tests/host/       MetamorfoHostProbe: VST3 (JUCE hosting) + minimal CLAP host for the built binaries
 tools/analysis/   Python audit: signals.py (synthetic voice), metrics.py, run_audit.py
 tools/ci/         validation scripts used by CI
 docs/             SPEC, ROADMAP, TESTING_FL, TEST_REPORT (latest audit)
@@ -85,4 +93,4 @@ docs/             SPEC, ROADMAP, TESTING_FL, TEST_REPORT (latest audit)
 ## Validation status (audit 2026-11-23, see docs/TEST_REPORT.md)
 pluginval strictness 10: VST3 + AU pass (pluginval cannot load CLAP) · Steinberg validator 3.8.0: 47/47 ·
 clap-validator 0.3.2: 18 pass, 3 skipped (no preset-discovery, N/A) · auval aumf: pass (macOS CI) ·
-Catch2 17/17 · DSP audit: 0 ✘ (26 ⏸ pending later phases).
+CTest 26/26 (24 Catch2 + 2 host probes) · ASan/UBSan/TSan clean · DSP audit: 0 ✘ (26 ⏸ later phases).

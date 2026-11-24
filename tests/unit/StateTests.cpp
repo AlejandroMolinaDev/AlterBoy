@@ -94,7 +94,9 @@ TEST_CASE ("Editor can be opened and closed without touching audio", "[ui]")
     std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditorAndMakeActive());
     REQUIRE (editor != nullptr);
     CHECK (editor->getWidth() > 0);
-    editor.reset(); // the editor's destructor notifies the processor
+    // Like every JUCE plugin wrapper: tell the processor before deleting its editor.
+    p.editorBeingDeleted (editor.get());
+    editor.reset();
 
     juce::AudioBuffer<float> buffer (2, 256);
     buffer.clear();

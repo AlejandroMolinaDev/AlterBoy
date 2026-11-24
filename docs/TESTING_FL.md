@@ -4,6 +4,31 @@ Checklist de verificación manual. Cada fase agrega su sección. La lista comple
 
 ---
 
+## Prueba rápida (5 minutos): solo lo que la automatización no puede cubrir
+
+Desde el 2026-11-24, el CI comprueba en Windows y macOS que los binarios VST3 y CLAP:
+- cargan en un host
+- son efectos
+- **declaran la entrada MIDI** (bus de eventos en VST3; puerto de notas MIDI en CLAP)
+- procesan sin errores
+- guardan su estado y aguantan varias instancias
+
+Detalle en [TEST_REPORT.md](TEST_REPORT.md) §10. Lo único que falta confirmar a mano en FL:
+
+1. **Escaneo:** *Options → Manage plugins* → agrega la carpeta de los binarios → *Find installed plugins*. Aparecen Metamorfo (VST3) y Metamorfo (CLAP) como efectos.
+2. **MIDI Out → port:**
+   1. Inserta Metamorfo (VST3) en un canal del Mixer.
+   2. En el engranaje del wrapper, ve a *Settings* y pon *MIDI → Input port* en **1**.
+   3. En el Channel Rack, agrega **MIDI Out** con *Port* en **1**.
+   4. Toca notas. El display del plugin las muestra.
+3. **Lo mismo con el CLAP:** repite el punto 2 con Metamorfo (CLAP).
+4. **`.flp`:** guarda el proyecto, ciérralo y vuelve a abrirlo. El plugin carga.
+5. **Export:** exporta a WAV. Suena igual que la reproducción (en la Fase 1, igual que la voz original).
+
+Si los 5 puntos pasan, la Fase 1 queda aceptada. Abajo sigue el checklist completo.
+
+---
+
 ## Fase 1: carga, audio y recepción MIDI
 
 **Requisitos:**

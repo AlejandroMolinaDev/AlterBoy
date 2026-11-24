@@ -308,3 +308,57 @@ Las correcciones B3 a B7 se aplicaron **después** de completar el diagnóstico,
 | Artefactos del CI | Solo macOS | `Metamorfo-win-VST3`, `Metamorfo-win-CLAP`, `Metamorfo-win-Standalone`, `Metamorfo-mac` |
 
 > Nota: en el log de clap-validator de Windows aparece `CLAP asked for plugin_id 'com.metamorfoaudio.metamorfox1'`. Es esperado: una de las pruebas pide a propósito un ID que no existe para verificar que el plugin lo rechaza, y la prueba pasa.
+
+## 10. Corrección automática (2026-11-24, sin prueba manual en FL)
+
+No pudiste probar en FL, así que automaticé todo lo que se puede verificar sin FL y cerré las brechas abordables sin empezar la Fase 2.
+
+### Lo que se agregó
+
+| Pieza | Qué verifica |
+|---|---|
+| `tests/unit/HostBehaviourTests.cpp` (6 casos) | Comportamientos típicos de FL y otros DAWs: **12 instancias procesando en paralelo** en hilos distintos; **cambio de sample rate en caliente** (44.1 → 96 → 48 → 192 → 44.1 kHz) sin `releaseResources`; `processBlock` **antes de `prepareToPlay`** y con **0 muestras**; **guardar y cargar estado 200 veces mientras suena** con automatización desde el hilo de audio; **abrir y cerrar el editor 50 veces mientras suena**; MIDI en los bordes de bloque (última muestra, bloques de 1 muestra) |
+| `tests/unit/LatencyTests.cpp` (G4) | **Latencia medida = reportada** (impulso; MIX 0 % y 100 %; 44.1, 48 y 96 kHz) y tope de 60 ms del SPEC §4.5 |
+| `tests/host/` → `MetamorfoHostProbe` | Carga los **binarios compilados** como un DAW. **VST3** con el hosting de JUCE: efecto (no instrumento), categoría Fx, **bus de entrada MIDI**, layouts, procesamiento con MIDI, estado entre instancias. **CLAP** con un host mínimo propio: id, vendor, feature audio-effect, **`clap.note-ports` con 1 puerto de entrada y dialecto MIDI** (lo que FL necesita para enrutar el MIDI Out), puertos de audio estéreo, `process()` con eventos de nota y MIDI crudo, estado guardado → cargado → guardado idéntico |
+| Presets `asan` y `tsan` (Linux y macOS) | AddressSanitizer + UBSan + detección de fugas, y ThreadSanitizer |
+| `run_audit.py --fail-on-x` + paso en el CI de macOS | El harness DSP corre en cada push y falla ante cualquier ✘ (G1 parcial). La tabla se publica como artefacto `dsp-audit` |
+| Job `linux-sanitizers` en el CI | ASan+UBSan sobre todos los tests (incluidos los host probes) y TSan sobre los tests de hilos |
+
+### Resultados (Linux local)
+
+| Prueba | Resultado |
+|---|---|
+| CTest Release | ✔ **26/26**: 24 casos de Catch2 + `host_probe_vst3` + `host_probe_clap` |
+| Host probe VST3 | ✔ 20/20 comprobaciones |
+| Host probe CLAP | ✔ 27/27 comprobaciones, incluido el **puerto de notas MIDI** |
+| ASan + UBSan + LeakSanitizer (Debug) | ✔ 26/26, sin reportes |
+| ASan sobre el harness DSP completo | ✔ 73 pruebas, 0 ✘, sin reportes |
+| ThreadSanitizer | ✔ 24/24, **sin data races**. Control negativo: TSan sí detecta una carrera de prueba en este entorno |
+| `run_audit.py --phase 1 --fail-on-x` | ✔ código de salida 0. Control negativo con `--phase 9`: código 1 |
+| pluginval nivel 10 · validador VST3 · clap-validator | ✔ SUCCESS · 47/47 · 18/0/3 |
+
+### Hallazgos
+
+| ID | Gravedad | Hallazgo | Corrección |
+|---|---|---|---|
+| **B8** | Baja (solo tests) | El test `Editor can be opened and closed…` de la auditoría borraba el editor **sin** llamar a `editorBeingDeleted()`. En JUCE 9 esa llamada le toca al host, no al destructor, así que el procesador quedaba con un puntero colgante. **El plugin no estaba afectado**, porque los wrappers de JUCE sí la hacen. Lo descubrió el nuevo test de 50 aperturas | ✔ Los dos tests de editor siguen ahora el protocolo de un host real. Los hilos de prueba hacen `join` aunque falle una aserción (`StopAndJoin`) |
+| I1 | Informativo | En Debug, el wrapper CLAP de terceros dispara su propia aserción `FIXME: Handle bypass and deactivated states` (`clap-juce-wrapper.cpp:1824`) en cada `process()` | No se corrige. Es un marcador interno de clap-juce-extensions que no existe en Release ni afecta al audio. Se anota en el ROADMAP para seguirlo cuando se actualice la dependencia |
+
+### Qué ya no depende de FL y qué sí
+
+- **Automatizado:**
+  - carga del binario VST3 y CLAP en un host
+  - registro como efecto
+  - **declaración de la entrada MIDI en VST3 y en CLAP**
+  - layouts, passthrough y estado
+  - instancias en paralelo
+  - cambios de sample rate y de buffer
+  - editor con el audio en marcha
+  - ausencia de alocaciones, carreras y errores de memoria
+- **Solo se puede verificar en FL:**
+  - que el escáner de FL lo detecte
+  - el enrutado real de un canal **MIDI Out → port 1** hacia el wrapper
+  - guardar y reabrir el `.flp`
+  - export frente a reproducción
+  - el escalado DPI
+  - La sección "Prueba rápida" de [TESTING_FL.md](TESTING_FL.md) reúne solo esos puntos (unos 5 minutos).
