@@ -336,6 +336,7 @@ No pudiste probar en FL, así que automaticé todo lo que se puede verificar sin
 | ThreadSanitizer | ✔ 24/24, **sin data races**. Control negativo: TSan sí detecta una carrera de prueba en este entorno |
 | `run_audit.py --phase 1 --fail-on-x` | ✔ código de salida 0. Control negativo con `--phase 9`: código 1 |
 | pluginval nivel 10 · validador VST3 · clap-validator | ✔ SUCCESS · 47/47 · 18/0/3 |
+| **CI** (run `45309729521`, commit `1ecdad8`) | ✔ **los 3 jobs en verde**: Windows (tests + host probes + validadores), macOS (tests + host probes + auditoría DSP + auval/pluginval/validadores) y linux-sanitizers (ASan/UBSan + TSan) |
 
 ### Hallazgos
 
