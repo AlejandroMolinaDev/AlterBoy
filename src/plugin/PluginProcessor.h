@@ -85,13 +85,17 @@ public:
     int getPreparedBlockSize() const noexcept { return preparedBlockSize_.load (std::memory_order_relaxed); }
 
 private:
-    void handleMidi (const juce::MidiBuffer& midi) noexcept;
-    void processChunk (juce::AudioBuffer<float>& buffer, int startSample, int numSamples) noexcept;
+    void handleMidiMessage (const juce::MidiMessage& message) noexcept; // display / activity
+    void applyMidiToEngine (const juce::MidiMessage& message) noexcept; // note stack (delayed)
+    void processChunk (juce::AudioBuffer<float>& buffer, int startSample, int numSamples,
+                       const juce::MidiBuffer& midi) noexcept;
+    void renderSegment (juce::AudioBuffer<float>& buffer, int startSample, int numSamples) noexcept;
     void prepareEngine (double sampleRate, int maxBlock);
-    [[nodiscard]] dsp::PsolaEngine::Controls readControls() const noexcept;
+    [[nodiscard]] dsp::PsolaEngine::Controls readControls (float midiNote) const noexcept;
 
     juce::AudioProcessorValueTreeState parameters_;
-    dsp::MidiPitchControl midiPitch_;
+    dsp::MidiPitchControl midiPitch_;    // drives the engine (events delayed to the synthesis horizon)
+    dsp::MidiPitchControl displayNotes_; // what the display shows (events applied on reception)
     MidiActivity midiActivity_;
     dsp::PitchDetector pitchDetector_;
     dsp::PsolaEngine engine_;
@@ -103,6 +107,19 @@ private:
     int totalLatency_ = 0;
 
     juce::SmoothedValue<float> mixSmoothed_ { 1.0f };
+
+    // MIDI reaches the engine delayed by maxPeriod samples, the distance between the
+    // input and the synthesis horizon, so pitch changes line up with the timeline.
+    struct QueuedMidi
+    {
+        std::int64_t due = 0;
+        juce::uint8 bytes[3] {};
+        int size = 0;
+    };
+    std::array<QueuedMidi, 1024> midiQueue_ {};
+    std::uint32_t midiQueueRead_ = 0, midiQueueWrite_ = 0;
+    std::int64_t streamPosition_ = 0;
+    int midiDelay_ = 0;
 
     // Cached parameter pointers (lock-free reads on the audio thread).
     std::atomic<float>* pitchParam_ = nullptr;

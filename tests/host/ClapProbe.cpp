@@ -229,11 +229,13 @@ int runClapProbe (const std::string& path)
             inL[i] = inputL (static_cast<std::int64_t> (block) * frames + i);
             inR[i] = inputR (static_cast<std::int64_t> (block) * frames + i);
         }
+        // Blocks 0-29: no notes (neutral -> delayed input). Blocks 30-49: notes (they
+        // transpose the voice now), only finiteness / no error is checked there.
         InputEvents events;
-        if (block % 10 == 0) events.add (noteEvent (CLAP_EVENT_NOTE_ON, 10, static_cast<std::int16_t> (60 + block / 10), 0.8));
-        if (block % 10 == 5) events.add (noteEvent (CLAP_EVENT_NOTE_OFF, 0, static_cast<std::int16_t> (60 + block / 10), 0.0));
-        if (block == 7) events.add (midiEvent (5, 0x90, 72, 100)); // raw MIDI dialect
-        if (block == 8) events.add (midiEvent (5, 0x80, 72, 0));
+        if (block >= 30 && block % 10 == 0) events.add (noteEvent (CLAP_EVENT_NOTE_ON, 10, static_cast<std::int16_t> (60 + block / 10), 0.8));
+        if (block >= 30 && block % 10 == 5) events.add (noteEvent (CLAP_EVENT_NOTE_OFF, 0, static_cast<std::int16_t> (60 + block / 10), 0.0));
+        if (block == 37) events.add (midiEvent (5, 0x90, 72, 100)); // raw MIDI dialect
+        if (block == 38) events.add (midiEvent (5, 0x80, 72, 0));
 
         clap_process_t process {};
         process.steady_time = static_cast<std::int64_t> (block) * frames;
@@ -249,6 +251,9 @@ int runClapProbe (const std::string& path)
         // Neutral settings: output = input delayed by the reported latency.
         for (std::uint32_t i = 0; i < frames; ++i)
         {
+            processedOk &= std::isfinite (outL[i]) && std::isfinite (outR[i]);
+            if (block >= 30)
+                continue;
             const auto n = static_cast<std::int64_t> (block) * frames + i - latency;
             maxError = std::max ({ maxError, std::abs (outL[i] - inputL (n)), std::abs (outR[i] - inputR (n)) });
         }

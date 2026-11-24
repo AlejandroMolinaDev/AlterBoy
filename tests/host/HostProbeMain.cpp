@@ -79,9 +79,11 @@ int runVst3Probe (const std::string& path)
         for (int ch = 0; ch < 2; ++ch)
             for (int i = 0; i < 512; ++i)
                 buffer.setSample (ch, i, signal (ch, block * 512 + i));
+        // Blocks 0-59: no MIDI (neutral -> delayed input). Blocks 60-99: MIDI notes, which
+        // now transpose the voice, so only finiteness is checked there.
         midi.clear();
-        if (block % 10 == 0) midi.addEvent (juce::MidiMessage::noteOn (1, 60 + block / 10, static_cast<juce::uint8> (100)), 17);
-        if (block % 10 == 5) midi.addEvent (juce::MidiMessage::noteOff (1, 60 + block / 10), 3);
+        if (block >= 60 && block % 10 == 0) midi.addEvent (juce::MidiMessage::noteOn (1, 60 + block / 10, static_cast<juce::uint8> (100)), 17);
+        if (block >= 60 && block % 10 == 5) midi.addEvent (juce::MidiMessage::noteOff (1, 60 + block / 10), 3);
 
         instance->processBlock (buffer, midi);
 
@@ -91,8 +93,9 @@ int runVst3Probe (const std::string& path)
                 // Neutral settings: input delayed by the reported latency.
                 const float y = buffer.getSample (ch, i);
                 const int n = block * 512 + i - latency;
-                finite &= std::isfinite (y);
-                maxError = std::max (maxError, std::abs (y - (n >= 0 ? signal (ch, n) : 0.0f)));
+                finite &= std::isfinite (y) && std::abs (y) < 4.0f;
+                if (block < 60)
+                    maxError = std::max (maxError, std::abs (y - (n >= 0 ? signal (ch, n) : 0.0f)));
             }
     }
     check (finite, "processing with MIDI produces finite output");

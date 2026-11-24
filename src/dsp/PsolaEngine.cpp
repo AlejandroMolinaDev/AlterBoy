@@ -92,28 +92,71 @@ const PsolaEngine::Mark* PsolaEngine::nearestMark (double time) const noexcept
     return best;
 }
 
+double PsolaEngine::refineMark (double previous, double predicted, double period) const noexcept
+{
+    // Pitch-synchronous refinement: choose the position near the prediction whose
+    // surrounding period best matches (normalised cross-correlation) the period around
+    // the previous mark. Keeps marks on the real glottal cycles through vibrato/jitter.
+    const int half = std::max (2, static_cast<int> (period * 0.5));
+    const int search = std::max (1, static_cast<int> (period * 0.125));
+    const auto prev = static_cast<std::int64_t> (std::lround (previous));
+    const auto pred = static_cast<std::int64_t> (std::lround (predicted));
+
+    double best = -1.0e300;
+    std::int64_t bestPos = pred;
+    for (auto c = pred - search; c <= pred + search; ++c)
+    {
+        double dot = 0.0, energy = 1.0e-12;
+        for (int i = -half; i < half; i += 2) // decimated by 2: plenty for the correlation peak
+        {
+            const float a = input_[static_cast<std::uint32_t> (prev + i) & inputMask_];
+            const float b = input_[static_cast<std::uint32_t> (c + i) & inputMask_];
+            dot += static_cast<double> (a) * b;
+            energy += static_cast<double> (b) * b;
+        }
+        const double score = dot / std::sqrt (energy);
+        if (score > best)
+        {
+            best = score;
+            bestPos = c;
+        }
+    }
+    return static_cast<double> (bestPos);
+}
+
 void PsolaEngine::generateAnalysisMarks (const PitchDetector& detector) noexcept
 {
-    // A mark is usable once its whole grain (+/- one period) is in the input buffer.
-    // The detector describes the signal up to `now - maxPeriod`; marks beyond that
-    // extrapolate the latest estimate (f0 varies slowly over one period).
+    // A mark is usable once its whole grain (+/- one period) and its refinement search
+    // window are in the input buffer. The detector describes the signal up to
+    // `now - maxPeriod`; marks beyond that extrapolate the latest estimate.
     for (;;)
     {
         const auto estimate = detector.estimateAt (nextAnalysis_);
         const bool voiced = estimate.voiced && estimate.f0 > 0.0f;
         const double period = voiced ? std::clamp (sampleRate_ / estimate.f0, 2.0, static_cast<double> (maxPeriod_))
                                      : pseudoPeriod_;
-        if (nextAnalysis_ + period + 1.0 > static_cast<double> (now_ - 1))
+        if (nextAnalysis_ + period * 1.25 + 2.0 > static_cast<double> (now_ - 1))
             break;
 
+        double time = nextAnalysis_;
+        double markPeriod = period;
+        const Mark* previous = markCount_ > 0 ? &marks_[static_cast<std::size_t> ((markWrite_ - 1 + kMarks) % kMarks)] : nullptr;
+        if (voiced && previous != nullptr && previous->voiced)
+        {
+            time = refineMark (previous->time, nextAnalysis_, period);
+            markPeriod = std::clamp (time - previous->time, period * 0.8, period * 1.25);
+            time = previous->time + markPeriod;
+        }
+
         Mark& m = marks_[static_cast<std::size_t> (markWrite_)];
-        m.time = nextAnalysis_;
-        m.period = period;
-        m.f0 = voiced ? estimate.f0 : 0.0f;
+        m.time = time;
+        m.period = markPeriod;
+        // The mark's own period defines its f0, so output f0 = target exactly.
+        m.f0 = voiced ? static_cast<float> (sampleRate_ / markPeriod) : 0.0f;
         m.voiced = voiced;
         markWrite_ = (markWrite_ + 1) % kMarks;
         markCount_ = std::min (markCount_ + 1, kMarks);
-        nextAnalysis_ += period;
+        nextAnalysis_ = time + period;
     }
 }
 

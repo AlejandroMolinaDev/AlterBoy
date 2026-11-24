@@ -62,6 +62,7 @@ private:
     };
 
     void generateAnalysisMarks (const PitchDetector& detector) noexcept;
+    [[nodiscard]] double refineMark (double previous, double predicted, double period) const noexcept;
     void generateSynthesisMarks (const Controls& controls) noexcept;
     void addGrain (const Mark& analysis, double synthesisTime, float formantRatio) noexcept;
     [[nodiscard]] float readInput (double position) const noexcept;

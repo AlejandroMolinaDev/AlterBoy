@@ -9,7 +9,7 @@ La especificación completa está en [SPEC.md](SPEC.md). Este archivo lleva el e
 | 1. Esqueleto + MIDI | ✅ Implementada · ⏳ falta tu prueba en FL | CMake + JUCE 9 + CLAP, passthrough, MIDI, CI, docs |
 | 2. Detector de tono | ✅ Implementada (2026-11-24) · ⏳ falta tu prueba en FL | YIN diezmado + refinamiento a la frecuencia completa, voicing con 3 indicadores, display ENTRADA/SALIDA |
 | 3. Motor de tono y formantes | ✅ Implementada (2026-11-24) · ⏳ falta tu escucha en FL | TD-PSOLA, formante por re-muestreo de granos, Link, Transponer, Mix alineado, latencia fija de 33,3 ms |
-| 4. Cuantizar, Robot y MIDI | Pendiente | Reutiliza `MidiPitchControl`; añade precisión de muestra y portamento |
+| 4. Cuantizar, Robot y MIDI | ✅ Implementada (2026-11-24) · ⏳ falta tu prueba en FL | Cuantizar (hard-tune con histéresis), Robot (MIDI 72 o nota MIDI), MIDI en los 3 modos con precisión de muestra, portamento de 0 a 200 ms |
 | 5. Drive | Pendiente | Tríodo, sobremuestreo 2× IIR, compensación de nivel |
 | 6. UI final + presets | Pendiente | Diseño del §8, presets, bloqueos, ayuda MIDI |
 | 7. Multi-DAW + distribución | Pendiente | DAW_MATRIX, instaladores, guía de usuario |
@@ -28,7 +28,7 @@ La especificación completa está en [SPEC.md](SPEC.md). Este archivo lleva el e
 - **Fase 2 (pendiente menor):** MPM como validador no se implementó. YIN ya prefiere el periodo más corto por debajo del umbral, que evita los errores de sub-octava, y la mediana de 5 más la histéresis cubren los saltos de octava. Los tests con voz sintética de E2 a E5 no muestran errores de octava. Se reevaluará si aparecen en voz real.
 - **Fase 3 (pendiente):** A/B de formante con envolvente cepstral. Se implementó solo el re-muestreo de granos: no añade latencia, cuesta poco y cumple las pruebas objetivas (centroide +37 % / −31 % con ±6, f0 estable en ±5 ¢, −2 sutil). La comparación cepstral queda pendiente para cuando haya escucha en voz real.
 - **Fase 3 (pendiente):** plan B si ±12 st no queda utilizable en voz real (phase vocoder con preservación de envolvente). Las pruebas objetivas pasan (±12 st con 0,1 ¢); la valoración de oído está pendiente de tu prueba en FL.
-- **Fase 4:** procesar el MIDI con precisión de muestra. En la Fase 1 se procesa por bloque.
+- ~~**Fase 4:** MIDI con precisión de muestra~~ → hecho (cola sin locks, ver Decisiones).
 - **Fase 4:** evaluar `CLAP_PROCESS_EVENTS_RESOLUTION_SAMPLES` para automatización precisa en CLAP.
 - **Fase 6:** probar el escalado DPI en FL Studio en Windows. Desde JUCE 8.0.13 hay reportes de cambios en la conciencia de DPI del proceso host.
 - **Fase 6:** comprobar que `getProgramName` y el sistema de presets propio no chocan con los presets nativos de FL.
@@ -37,7 +37,7 @@ La especificación completa está en [SPEC.md](SPEC.md). Este archivo lleva el e
   - **G2 (Fase 3):** infraestructura de suavizado: punteros atómicos cacheados + `juce::SmoothedValue`.
   - **G3 (Fase 2):** publicar la f0 y la confianza del detector en atómicos y en el JSON de `MetamorfoRender`.
   - ~~**G4:** test que mida la latencia~~ → hecho (`tests/unit/LatencyTests.cpp`).
-  - **G5 (Fase 4):** MIDI con precisión de muestra (ver arriba).
+  - ~~**G5:** MIDI con precisión de muestra~~ → hecho.
   - **G6 (Fases 2 a 5):** volver a medir la CPU con el motor real y añadir al CI un benchmark con límite (< 2 %, buffer 128).
 - **CI:** `ilammy/msvc-dev-cmd@v1` sigue en Node 20 (no hay versión para Node 24). Si GitHub retira Node 20, reemplazarlo por `Launch-VsDevShell.ps1`.
 - **CI:** añadir ccache o sccache si el tiempo de build crece.
@@ -75,6 +75,11 @@ No hay ninguna otra excepción. pluginval (nivel 10, VST3 y AU), auval y el vali
 | Auditoría | Parámetros con pasos decimales exactos (`steppedRange`) | En arm64, el ajuste por pasos de JUCE dejaba residuos (0 → 1.79e-7). Es el bug B2. |
 | Auditoría | El sanitizador también elimina los denormales | Venían desde la entrada y pasaban a la salida (B4). |
 | Auditoría | Headers de CLAP marcados `SYSTEM` | Sus warnings (más de 500 en clang) tapaban los nuestros (B6). |
+| Fase 4 | Cuantizar: semitono cromático más cercano con histéresis de 0,15 st más allá del punto medio y reajuste a 1 ms ("máxima velocidad"); después se aplica PITCH o el intervalo MIDI | Hard-tune inmediato sin parpadeo entre notas |
+| Fase 4 | Robot: nota = 72 + round(PITCH) o la nota MIDI exacta; reajuste a 1 ms; los tramos no sonoros no se tocan | SPEC §4.2 |
+| Fase 4 | MIDI: Transponer y Cuantizar usan nota − `midiReference`; sin notas vuelve a la perilla; prioridad a la última nota; portamento lineal en semitonos, de duración fija y sin glide desde el silencio | SPEC §4.2 |
+| Fase 4 | Los eventos MIDI llegan al motor **retrasados maxPeriod muestras** con una cola sin locks; el display recibe las notas al instante | El horizonte de síntesis va maxPeriod por detrás de la entrada: sin el retraso, el cambio de nota sonaría 16,7 ms antes que su posición en el piano roll |
+| Fase 4 | **Refinamiento síncrono de marcas**: cada marca sonora se ajusta (±P/8) por correlación cruzada normalizada con el ciclo anterior, y el ratio se calcula con el periodo real de la marca | Las marcas siguen los ciclos glóticos con vibrato y jitter: la salida de Robot y Cuantizar queda exactamente en la nota (error de −1,4 ¢ en la auditoría) |
 | Fase 3 | Latencia fija = 2 × periodo máximo (60 Hz) = 33,3 ms a cualquier sample rate (1470 / 1600 / 3200 muestras a 44,1 / 48 / 96 kHz) | Decidido en automático: conserva el rango de 60 a 1200 Hz del SPEC. Supera en 3,3 ms el objetivo de 30 ms, dentro del máximo de 60. Con 70 Hz serían 28,6 ms, perdiendo bajos profundos |
 | Fase 3 | TD-PSOLA: marcas de análisis a un periodo local (pseudo-periodo de 150 Hz en tramos no sonoros), marcas de síntesis a Pa/β, grano Hann de ±1 periodo **re-muestreado por el ratio de formante** y overlap-add normalizado por la suma de ventanas (piso 0,5) | Formante independiente sin latencia extra. Con Link, formante = ratio de pitch (tipo cinta) |
 | Fase 3 | Ratio de pitch suavizado en log entre granos (20 ms; tramos no sonoros → 1 en 15 ms), formante suavizado 30 ms, Mix 20 ms. Límite de ratio: ×1/8 a ×8 | Sin zipper. Fundidos en las transiciones de sonoridad. Robot puede subir una voz grave hasta Do5 |

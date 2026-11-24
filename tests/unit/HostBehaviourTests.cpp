@@ -61,6 +61,14 @@ struct StopAndJoin
     }
 };
 
+// MIDI now drives the engine; tests that check threading / host behaviour use
+// Mix 0 % so the output stays the bit-exact delayed input while MIDI is exercised.
+void setDryOnly (MetamorfoProcessor& p)
+{
+    auto* mix = p.getParameters().getParameter (metamorfo::params::id::mix);
+    mix->setValueNotifyingHost (mix->convertTo0to1 (0.0f));
+}
+
 bool hasDisplay()
 {
 #if JUCE_LINUX
@@ -80,6 +88,7 @@ TEST_CASE ("Many instances process concurrently without interfering", "[host][th
     for (int i = 0; i < numInstances; ++i)
     {
         instances.push_back (std::make_unique<MetamorfoProcessor>());
+        setDryOnly (*instances.back());
         REQUIRE (tryPrepare (*instances.back(), Set::stereo(), Set::stereo(), 512));
     }
 
@@ -228,6 +237,7 @@ TEST_CASE ("Editor can be opened and closed repeatedly while audio is running", 
         SKIP ("No X display available");
 
     MetamorfoProcessor p;
+    setDryOnly (p);
     REQUIRE (tryPrepare (p, Set::stereo(), Set::stereo(), 128));
 
     std::atomic<bool> running { true };

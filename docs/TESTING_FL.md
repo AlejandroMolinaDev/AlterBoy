@@ -142,3 +142,26 @@ En la Fase 1 la UI todavía no tiene el selector de modo, y Robot aún no cambia
 5. **Compensación de latencia (PDC):**
    1. Con Mix en 0 %, invierte la fase de la copia sin plugin.
    2. ✅ Se cancelan por completo (silencio). Eso confirma que FL compensa los 33,3 ms.
+
+---
+
+## Fase 4: Cuantizar, Robot y MIDI
+
+1. **Cuantizar (hard-tune):**
+   1. Pon **Mode** en *Cuantizar* y canta o reproduce una voz un poco desafinada.
+   2. ✅ Cada nota se "pega" al semitono más cercano de inmediato. Con vibrato se oye el efecto robótico clásico.
+   3. Con Pitch en +3, el resultado queda transpuesto 3 semitonos.
+2. **Robot sin MIDI:**
+   1. Pon Mode en *Robot*.
+   2. ✅ Toda la voz queda en **Do5** (MIDI 72).
+   3. Pitch en −5 la lleva a Sol4.
+3. **Robot con MIDI (canal MIDI Out + port):**
+   1. Wrapper → *MIDI input port* = 1. Canal **MIDI Out** → *Port* = 1.
+   2. Dibuja una melodía en el piano roll del MIDI Out.
+   3. ✅ La voz "canta" la melodía, **alineada con las notas del piano roll**.
+   4. Al soltar todas las notas vuelve a Do5.
+4. **Transponer con MIDI:**
+   1. Mode en *Transponer*, referencia en Do4.
+   2. Mantén Sol4. ✅ La voz sube una quinta.
+   3. Suelta. ✅ Vuelve al valor de la perilla Pitch.
+5. **Portamento:** pon **Portamento** en 150 ms y toca notas ligadas en Robot. ✅ La voz se desliza entre las notas.

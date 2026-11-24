@@ -163,12 +163,15 @@ class Audit:
         for link in (0, 1):
             y, _ = self.render(voice, sr, {"pitch": 5, "formant": 0, "link": link})
             res[link] = (m.cents(m.yin_f0(y, sr), expected_f), m.spectral_centroid(y, sr) / c_in)
+        # Reference for "formants preserved": the same synthetic voice generated directly
+        # at the new f0 (same formant filters). Its centroid also moves a little.
+        ideal = m.spectral_centroid(s.voice_note(expected_f, 2.0, sr), sr) / c_in
         ok_f = abs(res[0][0]) < 5 and abs(res[1][0]) < 5
-        ok_c = abs(res[0][1] - 1) < 0.05 and res[1][1] > 1.15
+        ok_c = abs(res[0][1] / ideal - 1) < 0.05 and res[1][1] > ideal * 1.15
         self.add("Link", "PITCH +5: f0 con Link OFF / ON", f"{res[0][0]:+.1f} ¢ / {res[1][0]:+.1f} ¢",
                  "ambos ±5 ¢ de +5 st", ok_f, "link")
         self.add("Link", "PITCH +5: centroide relativo OFF / ON", f"×{res[0][1]:.3f} / ×{res[1][1]:.3f}",
-                 "OFF ≈ ×1.00 (±5 %), ON > ×1.15 (≈ ×1.33)", ok_c, "link")
+                 f"OFF ≈ ideal ×{ideal:.3f} (±5 %), ON > ideal ×1.15", ok_c, "link")
 
     def quantize(self):
         sr = 48000

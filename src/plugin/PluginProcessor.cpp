@@ -45,6 +45,10 @@ void MetamorfoProcessor::prepareEngine (double sampleRate, int maxBlock)
     dryMask_ = size - 1;
     dryWrite_ = 0;
 
+    midiDelay_ = pitchDetector_.maxPeriodSamples();
+    midiQueueRead_ = midiQueueWrite_ = 0;
+    streamPosition_ = 0;
+
     mixSmoothed_.reset (sampleRate, 0.02);
     mixSmoothed_.setCurrentAndTargetValue (mixParam_->load() / 100.0f);
 }
@@ -55,6 +59,7 @@ void MetamorfoProcessor::prepareToPlay (double sampleRate, int maximumExpectedSa
     preparedBlockSize_.store (std::max (1, maximumExpectedSamplesPerBlock), std::memory_order_relaxed);
 
     midiPitch_.reset();
+    displayNotes_.reset();
     midiActivity_.heldNote.store (-1, std::memory_order_relaxed);
     prepareEngine (sampleRate, std::max (1, maximumExpectedSamplesPerBlock));
 
@@ -87,7 +92,7 @@ void MetamorfoProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
 {
     juce::ScopedNoDenormals noDenormals;
 
-    handleMidi (midi);
+    midiPitch_.setPortamento (portamentoParam_->load(), getSampleRate() > 0.0 ? getSampleRate() : 44100.0);
 
     // Hosts (FL Studio in particular) may deliver blocks larger than announced
     // in prepareToPlay; never trust the block size, process in chunks.
@@ -95,60 +100,139 @@ void MetamorfoProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     const int chunkSize = std::max (1, preparedBlockSize_.load (std::memory_order_relaxed));
 
     for (int start = 0; start < numSamples; start += chunkSize)
-        processChunk (buffer, start, std::min (chunkSize, numSamples - start));
+        processChunk (buffer, start, std::min (chunkSize, numSamples - start), midi);
+
 }
 
-void MetamorfoProcessor::handleMidi (const juce::MidiBuffer& midi) noexcept
+void MetamorfoProcessor::handleMidiMessage (const juce::MidiMessage& message) noexcept
 {
-    // Phase 1: block-level handling (sample accuracy arrives with phase 4).
-    for (const auto metadata : midi)
+    // Activity for the display: immediate.
+    if (message.isNoteOn())
     {
-        const auto message = metadata.getMessage();
-
-        if (message.isNoteOn())
-        {
-            midiPitch_.noteOn (message.getNoteNumber(), message.getVelocity());
-            midiActivity_.lastNote.store (message.getNoteNumber(), std::memory_order_relaxed);
-            midiActivity_.lastVelocity.store (message.getVelocity(), std::memory_order_relaxed);
-            midiActivity_.lastChannel.store (message.getChannel(), std::memory_order_relaxed);
-        }
-        else if (message.isNoteOff())
-        {
-            midiPitch_.noteOff (message.getNoteNumber());
-        }
-        else if (message.isAllNotesOff() || message.isAllSoundOff())
-        {
-            midiPitch_.reset();
-        }
-        else
-        {
-            continue; // only note traffic counts as activity
-        }
-
-        midiActivity_.eventCount.fetch_add (1, std::memory_order_relaxed);
+        midiActivity_.lastNote.store (message.getNoteNumber(), std::memory_order_relaxed);
+        midiActivity_.lastVelocity.store (message.getVelocity(), std::memory_order_relaxed);
+        midiActivity_.lastChannel.store (message.getChannel(), std::memory_order_relaxed);
+    }
+    else if (! (message.isNoteOff() || message.isAllNotesOff() || message.isAllSoundOff()))
+    {
+        return; // only note traffic counts as activity
     }
 
-    midiActivity_.heldNote.store (midiPitch_.activeNote(), std::memory_order_relaxed);
+    if (message.isNoteOn())
+        displayNotes_.noteOn (message.getNoteNumber(), message.getVelocity());
+    else if (message.isNoteOff())
+        displayNotes_.noteOff (message.getNoteNumber());
+    else
+        displayNotes_.reset();
+
+    midiActivity_.heldNote.store (displayNotes_.activeNote(), std::memory_order_relaxed);
+    midiActivity_.eventCount.fetch_add (1, std::memory_order_relaxed);
 }
 
-dsp::PsolaEngine::Controls MetamorfoProcessor::readControls() const noexcept
+void MetamorfoProcessor::applyMidiToEngine (const juce::MidiMessage& message) noexcept
+{
+    if (message.isNoteOn())
+        midiPitch_.noteOn (message.getNoteNumber(), message.getVelocity());
+    else if (message.isNoteOff())
+        midiPitch_.noteOff (message.getNoteNumber());
+    else if (message.isAllNotesOff() || message.isAllSoundOff())
+        midiPitch_.reset();
+}
+
+dsp::PsolaEngine::Controls MetamorfoProcessor::readControls (float midiNote) const noexcept
 {
     dsp::PsolaEngine::Controls c;
     c.mode.mode = static_cast<dsp::ModeController::Mode> (std::clamp (static_cast<int> (std::lround (modeParam_->load())), 0, 2));
     c.mode.knobSemitones = pitchParam_->load();
-    c.mode.midiNote = -1.0f; // MIDI control of the engine arrives with phase 4
+    c.mode.midiNote = midiNote; // held (gliding) MIDI note, -1 = none -> PITCH knob
     c.mode.midiReference = static_cast<int> (std::lround (midiReferenceParam_->load()));
     c.formantSemitones = formantParam_->load();
     c.link = linkParam_->load() >= 0.5f;
-    c.retuneMs = 20.0f;
+    // Quantize and Robot retune "at maximum speed" (SPEC §4.2); Transpose glides softly.
+    c.retuneMs = c.mode.mode == dsp::ModeController::Mode::transpose ? 20.0f : 1.0f;
     return c;
 }
 
-void MetamorfoProcessor::processChunk (juce::AudioBuffer<float>& buffer, int startSample, int numSamples) noexcept
+void MetamorfoProcessor::processChunk (juce::AudioBuffer<float>& buffer, int startSample, int numSamples,
+                                       const juce::MidiBuffer& midi) noexcept
 {
+    // 1) Queue the incoming events of this chunk (the last chunk also takes any event
+    //    stamped beyond the block), due maxPeriod samples later.
+    const int end = startSample + numSamples;
+    const bool lastChunk = end >= buffer.getNumSamples();
+    for (auto it = midi.findNextSamplePosition (startSample); it != midi.cend(); ++it)
+    {
+        const auto event = *it;
+        if (event.samplePosition >= end && ! lastChunk)
+            break;
+        const auto message = event.getMessage();
+        handleMidiMessage (message);
+        if (message.getRawDataSize() > 3 || midiQueueWrite_ - midiQueueRead_ >= midiQueue_.size())
+            continue; // sysex is irrelevant; a full queue drops (never blocks)
+        auto& q = midiQueue_[midiQueueWrite_ % midiQueue_.size()];
+        q.due = streamPosition_ + std::min (event.samplePosition, end - 1) - startSample + midiDelay_;
+        q.size = message.getRawDataSize();
+        std::copy_n (message.getRawData(), q.size, q.bytes);
+        ++midiQueueWrite_;
+    }
+
+    // 2) Render, applying queued events sample-accurately when they fall due.
+    int position = startSample;
+    while (position < end)
+    {
+        int segmentEnd = end;
+        if (midiQueueRead_ != midiQueueWrite_)
+        {
+            const auto& next = midiQueue_[midiQueueRead_ % midiQueue_.size()];
+            const auto offset = next.due - (streamPosition_ + (position - startSample));
+            if (offset <= 0)
+            {
+                applyMidiToEngine (juce::MidiMessage (next.bytes, next.size));
+                ++midiQueueRead_;
+                continue;
+            }
+            segmentEnd = static_cast<int> (std::min<std::int64_t> (end, position + offset));
+        }
+        renderSegment (buffer, position, segmentEnd - position);
+        position = segmentEnd;
+    }
+    streamPosition_ += numSamples;
+
+    // Display (read by the editor through atomics).
+    const auto& estimate = pitchDetector_.latest();
+    analysisDisplay_.inputF0.store (estimate.f0, std::memory_order_relaxed);
+    const float outF0 = engine_.currentVoiced() ? engine_.currentInputF0() * engine_.currentRatio() : 0.0f;
+    analysisDisplay_.outputF0.store (outF0, std::memory_order_relaxed);
+    analysisDisplay_.confidence.store (1.0f - std::min (1.0f, estimate.aperiodicity), std::memory_order_relaxed);
+    analysisDisplay_.voiced.store (estimate.voiced, std::memory_order_relaxed);
+
+    // Output sanitisation: never emit NaN, Inf or denormals.
+    for (int ch = 0; ch < getTotalNumOutputChannels(); ++ch)
+    {
+        auto* data = buffer.getWritePointer (ch, startSample);
+        for (int i = 0; i < numSamples; ++i)
+            if (! std::isfinite (data[i]) || std::abs (data[i]) < std::numeric_limits<float>::min())
+                data[i] = 0.0f;
+    }
+}
+
+void MetamorfoProcessor::renderSegment (juce::AudioBuffer<float>& buffer, int startSample, int numSamples) noexcept
+{
+    if (numSamples <= 0)
+        return;
+
+    // Controls are refreshed every 32 samples so the portamento glide is smooth.
+    constexpr int kControlBlock = 32;
+    if (numSamples > kControlBlock)
+    {
+        for (int offset = 0; offset < numSamples; offset += kControlBlock)
+            renderSegment (buffer, startSample + offset, std::min (kControlBlock, numSamples - offset));
+        return;
+    }
+
     const int numIn = getTotalNumInputChannels();
     const int numOut = std::min (getTotalNumOutputChannels(), 2);
-    const auto controls = readControls();
+    const auto controls = readControls (midiPitch_.advance (numSamples));
     mixSmoothed_.setTargetValue (mixParam_->load() / 100.0f);
 
     float* out[2] = { buffer.getWritePointer (0, startSample),
@@ -185,23 +269,6 @@ void MetamorfoProcessor::processChunk (juce::AudioBuffer<float>& buffer, int sta
     // Any other output channel is cleared.
     for (int ch = numOut; ch < getTotalNumOutputChannels(); ++ch)
         buffer.clear (ch, startSample, numSamples);
-
-    // Display (read by the editor through atomics).
-    const auto& estimate = pitchDetector_.latest();
-    analysisDisplay_.inputF0.store (estimate.f0, std::memory_order_relaxed);
-    const float outF0 = engine_.currentVoiced() ? engine_.currentInputF0() * engine_.currentRatio() : 0.0f;
-    analysisDisplay_.outputF0.store (outF0, std::memory_order_relaxed);
-    analysisDisplay_.confidence.store (1.0f - std::min (1.0f, estimate.aperiodicity), std::memory_order_relaxed);
-    analysisDisplay_.voiced.store (estimate.voiced, std::memory_order_relaxed);
-
-    // Output sanitisation: never emit NaN, Inf or denormals.
-    for (int ch = 0; ch < getTotalNumOutputChannels(); ++ch)
-    {
-        auto* data = buffer.getWritePointer (ch, startSample);
-        for (int i = 0; i < numSamples; ++i)
-            if (! std::isfinite (data[i]) || std::abs (data[i]) < std::numeric_limits<float>::min())
-                data[i] = 0.0f;
-    }
 }
 
 juce::AudioProcessorEditor* MetamorfoProcessor::createEditor()

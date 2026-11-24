@@ -9,8 +9,9 @@ namespace metamorfo::dsp
 // Tracks held MIDI notes with last-note priority. Real-time safe: fixed-size
 // storage, no allocation, no locks. Owned and driven by the audio thread only.
 //
-// Phase 1: note tracking only. Phase 4 adds target-pitch computation per mode
-// and portamento on top of this class.
+// Also provides the gliding note used by the engine: when the priority note
+// changes while another is sounding, it moves linearly (in semitones) to the new
+// note over the portamento time (0 = jump). The first note after silence jumps.
 class MidiPitchControl
 {
 public:
@@ -28,6 +29,14 @@ public:
     [[nodiscard]] int activeVelocity() const noexcept; // 0 when nothing is held
     [[nodiscard]] int numHeldNotes() const noexcept { return count_; }
 
+    // Portamento -----------------------------------------------------------------
+    void setPortamento (float milliseconds, double sampleRate) noexcept;
+
+    // Advances the glide by `numSamples` and returns the current (fractional) note,
+    // or -1 when no note is held.
+    float advance (int numSamples) noexcept;
+    [[nodiscard]] float glidingNote() const noexcept { return count_ > 0 ? glideNote_ : -1.0f; }
+
 private:
     void remove (int note) noexcept;
 
@@ -35,6 +44,11 @@ private:
     std::array<std::uint8_t, kMaxNotes> notes_ {};
     std::array<std::uint8_t, kMaxNotes> velocities_ {};
     int count_ = 0;
+
+    float glideNote_ = -1.0f;
+    float glideSamples_ = 0.0f; // portamento time in samples
+    float glideStep_ = 0.0f;    // semitones per sample for the current glide
+    int glideTarget_ = kNoNote;
 };
 
 } // namespace metamorfo::dsp
