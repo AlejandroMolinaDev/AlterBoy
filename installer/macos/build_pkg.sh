@@ -17,9 +17,22 @@ ditto "$ARTEFACTS/AU/Metamorfo.component" "$STAGE/Library/Audio/Plug-Ins/Compone
 ditto "$ARTEFACTS/CLAP/Metamorfo.clap" "$STAGE/Library/Audio/Plug-Ins/CLAP/Metamorfo.clap"
 ditto "$ARTEFACTS/Standalone/Metamorfo.app" "$STAGE/Applications/Metamorfo.app"
 
+# Bundles must NOT be relocatable: otherwise Installer "updates" any copy with the same
+# bundle id it finds elsewhere on disk (an old manual copy, a build folder) instead of
+# installing into /Library/Audio/Plug-Ins.
+COMPONENTS="$(mktemp -t metamorfo-components).plist"
+pkgbuild --analyze --root "$STAGE" "$COMPONENTS"
+i=0
+while /usr/libexec/PlistBuddy -c "Print :$i" "$COMPONENTS" >/dev/null 2>&1; do
+  /usr/libexec/PlistBuddy -c "Set :$i:BundleIsRelocatable false" "$COMPONENTS"
+  i=$((i + 1))
+done
+echo "Non-relocatable bundles: $i"
+
 mkdir -p "$ROOT_DIR/dist"
 OUT="$ROOT_DIR/dist/Metamorfo-$VERSION-macOS.pkg"
 pkgbuild --root "$STAGE" \
+         --component-plist "$COMPONENTS" \
          --identifier com.metamorfoaudio.metamorfo.pkg \
          --version "$VERSION" \
          --install-location / \

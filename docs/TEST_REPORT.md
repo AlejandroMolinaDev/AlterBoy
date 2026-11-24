@@ -398,6 +398,8 @@ Se implementaron las Fases 2 a 7 sin pausas, a petición tuya. Cada fase se cerr
 | B14 | En el CI de Windows, 11 tests "no se encontraban": CTest pasaba el "§" del nombre con otra codificación | Nombres de tests solo en ASCII (regla añadida a CLAUDE.md) |
 | B15 | Auditoría: el criterio de Link OFF comparaba contra ×1,00, cuando el centroide ideal con formantes preservados es ×1,04 | Se compara contra una voz ideal re-sintetizada |
 | B16 | Auditoría: el null de Drive 0 no alineaba la latencia | Alineado por la latencia reportada |
+| B17 | CI, `.pkg` de macOS: "instalación correcta", pero el VST3 no estaba en `/Library`. Installer **reubicaba** los bundles a otra copia con el mismo identificador (la del directorio de build); a un usuario con una copia manual antigua le pasaría lo mismo | `pkgbuild --component-plist` con `BundleIsRelocatable = false` para todos los bundles |
+| B18 | CI, ASan: LeakSanitizer reportaba 320 bytes dentro de **libfontconfig** (configuración global que nunca se libera) al dibujar glifos de reserva de la UI | Supresión acotada a `libfontconfig.so` en `tools/ci/lsan.supp`; ningún código propio queda suprimido |
 
 ### Lo que sigue sin poder verificarse aquí
 

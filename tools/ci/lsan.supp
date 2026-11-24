@@ -1,0 +1,5 @@
+# LeakSanitizer suppressions (third-party only; never suppress our own code).
+# fontconfig allocates its global configuration once and never frees it; JUCE's
+# font fallback (FcConfigSetDefaultSubstitute) triggers it when the UI draws a glyph
+# missing from the embedded fonts. Known, bounded, process-lifetime allocation.
+leak:libfontconfig.so
