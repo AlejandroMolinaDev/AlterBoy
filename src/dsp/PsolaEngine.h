@@ -16,8 +16,8 @@ namespace metamorfo::dsp
 //    (unvoiced regions use a fixed pseudo-period so they are reconstructed, not shifted).
 //  * Synthesis marks are spaced by analysis period / pitch ratio. Each synthesis mark
 //    takes the grain around the nearest available analysis mark: a Hann window over
-//    +/- one analysis period, RESAMPLED by the formant ratio (formant shift
-//    independent of pitch). With Link on, formant ratio = pitch ratio (tape-like shift).
+//    +/- 0.8..1 analysis period (shorter when shifting up, see addGrain), RESAMPLED by
+//    the formant ratio (formant shift independent of pitch). With Link on, formant ratio = pitch ratio (tape-like shift).
 //  * Grains are overlap-added with window-sum normalisation.
 //  * Fixed latency: 2 x the longest period (60 Hz) -> 33.3 ms at any sample rate.
 //  * Identity settings cross-fade to the exactly delayed input (bit-exact transparency).
@@ -64,7 +64,7 @@ private:
     void generateAnalysisMarks (const PitchDetector& detector) noexcept;
     [[nodiscard]] double refineMark (double previous, double predicted, double period) const noexcept;
     void generateSynthesisMarks (const Controls& controls) noexcept;
-    void addGrain (const Mark& analysis, double synthesisTime, float formantRatio) noexcept;
+    void addGrain (const Mark& analysis, double synthesisTime, float formantRatio, double pitchRatio) noexcept;
     [[nodiscard]] float readInput (double position) const noexcept;
     [[nodiscard]] const Mark* nearestMark (double time) const noexcept;
 
@@ -72,6 +72,8 @@ private:
     int maxPeriod_ = 800;
     int latency_ = 1600;
     double pseudoPeriod_ = 320.0;
+    int refineStride_ = 2; // refineMark: correlation stride (~24 kHz resolution)
+    int refineStep_ = 1;   // refineMark: coarse candidate step
 
     std::vector<float> input_, acc_, wsum_;
     std::uint32_t inputMask_ = 0, outputMask_ = 0;

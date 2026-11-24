@@ -100,8 +100,8 @@ void MidiPitchControl::remove (int note) noexcept
 
         for (int j = i; j < count_ - 1; ++j)
         {
-            notes_[static_cast<std::size_t> (j)] = notes_[static_cast<std::size_t> (j + 1)];
-            velocities_[static_cast<std::size_t> (j)] = velocities_[static_cast<std::size_t> (j + 1)];
+            notes_[static_cast<std::size_t> (j)] = notes_[static_cast<std::size_t> (j) + 1];
+            velocities_[static_cast<std::size_t> (j)] = velocities_[static_cast<std::size_t> (j) + 1];
         }
 
         --count_;

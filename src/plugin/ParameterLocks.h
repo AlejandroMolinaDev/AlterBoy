@@ -23,6 +23,11 @@ public:
 
     void setLocked (const juce::String& paramId, bool locked)
     {
+        // Only real parameter IDs: anything else would be stored as an XML attribute
+        // name in the plug-in state (an invalid name, e.g. with a space, makes the whole
+        // saved state unparsable).
+        if (state_.getParameter (paramId) == nullptr)
+            return;
         auto node = state_.state.getOrCreateChildWithName (kNodeType, nullptr);
         if (locked)
             node.setProperty (paramId, true, nullptr);

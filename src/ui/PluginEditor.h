@@ -48,7 +48,6 @@ private:
     void applyScale (float scale);
     [[nodiscard]] float currentScale() const;
 
-    MetamorfoProcessor& processor_;
     MetamorfoLookAndFeel lnf_;
     std::unique_ptr<Content> content_;
     juce::TooltipWindow tooltips_ { this, 700 };

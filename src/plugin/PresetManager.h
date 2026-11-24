@@ -52,7 +52,9 @@ public:
     [[nodiscard]] int currentIndex() const;
     [[nodiscard]] juce::String currentName() const;
 
-    // Saves the current values as a user preset; returns the written file.
+    // Saves the current values as a user preset; returns the written file, or a default
+    // (non-existent) File when it could not be written. Name and category are sanitised
+    // into single path components inside userDirectory().
     juce::File saveUserPreset (const juce::String& name, const juce::String& category = kUserCategory);
 
     // A/B comparison.

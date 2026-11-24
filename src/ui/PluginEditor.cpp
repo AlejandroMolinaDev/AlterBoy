@@ -1,5 +1,8 @@
 #include "ui/PluginEditor.h"
 
+#include <algorithm>
+#include <cmath>
+
 #include "plugin/Parameters.h"
 #include "plugin/PluginProcessor.h"
 
@@ -274,7 +277,7 @@ private:
 
 // =======================================================================================
 MetamorfoEditor::MetamorfoEditor (MetamorfoProcessor& owner)
-    : juce::AudioProcessorEditor (owner), processor_ (owner)
+    : juce::AudioProcessorEditor (owner)
 {
     setLookAndFeel (&lnf_);
     content_ = std::make_unique<Content> (owner, lnf_);
@@ -320,7 +323,10 @@ void MetamorfoEditor::saveScale (float scale)
 
 float MetamorfoEditor::currentScale() const
 {
-    return static_cast<float> (getWidth()) / static_cast<float> (kBaseWidth);
+    // Width AND height (B24): a host that imposes a size with another aspect ratio must
+    // never crop the canvas; the content is scaled to fit and centred.
+    return std::min (static_cast<float> (getWidth()) / static_cast<float> (kBaseWidth),
+                     static_cast<float> (getHeight()) / static_cast<float> (kBaseHeight));
 }
 
 void MetamorfoEditor::applyScale (float scale)
@@ -338,8 +344,12 @@ void MetamorfoEditor::resized()
 {
     if (content_ == nullptr)
         return;
-    content_->setTransform (juce::AffineTransform::scale (currentScale()));
+    const float scale = currentScale();
+    const float x = 0.5f * (static_cast<float> (getWidth()) - scale * static_cast<float> (kBaseWidth));
+    const float y = 0.5f * (static_cast<float> (getHeight()) - scale * static_cast<float> (kBaseHeight));
+    content_->setTransform (juce::AffineTransform::scale (scale).translated (std::round (x), std::round (y)));
     content_->setBounds (0, 0, kBaseWidth, kBaseHeight);
+    content_->presetBar().refresh(); // scale label up to date at once, not on the next tick (B25)
 }
 
 void MetamorfoEditor::timerCallback()

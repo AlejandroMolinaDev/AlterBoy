@@ -1,5 +1,6 @@
 #include "ui/components/Knob.h"
 
+#include "plugin/Parameters.h"
 #include "ui/MetamorfoLookAndFeel.h"
 
 namespace metamorfo::ui
@@ -282,6 +283,12 @@ void Knob::promptForValue()
                                  if (safe == nullptr || result != 1)
                                      return;
                                  const auto text = window->getTextEditorContents ("value");
+                                 // Not a number -> keep the current value (B21). The MIDI note
+                                 // knob also accepts its own "C3 (48)" format.
+                                 float typed = 0.0f;
+                                 const bool isNote = safe->paramId_ == params::id::midiReference;
+                                 if (isNote ? ! text.containsAnyOf ("0123456789") : ! params::parseNumber (text, typed))
+                                     return;
                                  const float normalised = safe->param_->getValueForText (text);
                                  safe->slider_->setValue (safe->param_->convertFrom0to1 (normalised), juce::sendNotificationSync);
                              }),

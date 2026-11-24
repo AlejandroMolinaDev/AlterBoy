@@ -55,6 +55,12 @@ public:
     void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) override;
     using juce::AudioProcessor::processBlock;
 
+    // Host bypass (VST3 / AU / Standalone): the input delayed by exactly the reported
+    // latency on every output channel, sanitised, cross-faded over 20 ms when toggled.
+    // JUCE's default neither delays nor fills mono -> stereo (B19 / B20).
+    void processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) override;
+    using juce::AudioProcessor::processBlockBypassed;
+
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
@@ -93,6 +99,7 @@ public:
 private:
     void handleMidiMessage (const juce::MidiMessage& message) noexcept; // display / activity
     void applyMidiToEngine (const juce::MidiMessage& message) noexcept; // note stack (delayed)
+    void process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi, bool bypassed) noexcept;
     void processChunk (juce::AudioBuffer<float>& buffer, int startSample, int numSamples,
                        const juce::MidiBuffer& midi) noexcept;
     void renderSegment (juce::AudioBuffer<float>& buffer, int startSample, int numSamples) noexcept;
@@ -116,6 +123,8 @@ private:
 
     juce::SmoothedValue<float> mixSmoothed_ { 1.0f };
     juce::SmoothedValue<float> driveSmoothed_ { 0.0f };
+    juce::SmoothedValue<float> bypassSmoothed_ { 0.0f }; // 1 = host bypass (delayed dry)
+    bool firstBlock_ = true; // the first block after prepare starts without a bypass fade
     std::array<dsp::TubeDrive, 2> drive_; // one per output channel, after the engine
     int engineLatency_ = 0;
 

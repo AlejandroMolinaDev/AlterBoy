@@ -42,6 +42,11 @@ public:
 
     void refresh(); // called by the editor timer (lock colour, mirrored value)
 
+    // Read-only accessors (tests, accessibility).
+    [[nodiscard]] const juce::String& parameterId() const noexcept { return paramId_; }
+    [[nodiscard]] bool isShowingValue() const noexcept { return showValue_; }
+    [[nodiscard]] bool isMirroring() const noexcept { return static_cast<bool> (mirror_); }
+
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;

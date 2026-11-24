@@ -186,8 +186,12 @@ void PresetBar::promptSave()
                                  if (safe == nullptr || result != 1)
                                      return;
                                  auto category = window->getTextEditorContents ("category").trim();
-                                 safe->presets_.saveUserPreset (window->getTextEditorContents ("name"),
-                                                                category.isEmpty() ? juce::String (PresetManager::kUserCategory) : category);
+                                 const auto written = safe->presets_.saveUserPreset (window->getTextEditorContents ("name"),
+                                                                                     category.isEmpty() ? juce::String (PresetManager::kUserCategory) : category);
+                                 if (! written.existsAsFile())
+                                     juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Guardar preset",
+                                                                             utf8 ("No se pudo guardar el preset en:\n")
+                                                                                 + safe->presets_.userDirectory().getFullPathName());
                                  safe->refresh();
                              }),
                              true);

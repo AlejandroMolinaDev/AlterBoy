@@ -74,10 +74,10 @@ void PitchDetector::prepare (double sampleRate)
     decimated_.assign (decSize, 0.0f);
     decimatedMask_ = decSize - 1;
 
-    scratchD_.assign (static_cast<std::size_t> (2 * maxPeriodD_ + 2), 0.0f);
-    scratchF_.assign (static_cast<std::size_t> (2 * maxPeriod_ + 2), 0.0f);
-    diff_.assign (static_cast<std::size_t> (maxPeriodD_ + 2), 0.0f);
-    cmnd_.assign (static_cast<std::size_t> (maxPeriodD_ + 2), 1.0f);
+    scratchD_.assign (2 * static_cast<std::size_t> (maxPeriodD_) + 2, 0.0f);
+    scratchF_.assign (2 * static_cast<std::size_t> (maxPeriod_) + 2, 0.0f);
+    diff_.assign (static_cast<std::size_t> (maxPeriodD_) + 2, 0.0f);
+    cmnd_.assign (static_cast<std::size_t> (maxPeriodD_) + 2, 1.0f);
 
     reset();
 }
@@ -166,7 +166,7 @@ void PitchDetector::analyse() noexcept
     {
         if (cmnd_[static_cast<std::size_t> (tau)] < threshold)
         {
-            while (tau + 1 < maxPeriodD_ && cmnd_[static_cast<std::size_t> (tau + 1)] < cmnd_[static_cast<std::size_t> (tau)])
+            while (tau + 1 < maxPeriodD_ && cmnd_[static_cast<std::size_t> (tau) + 1] < cmnd_[static_cast<std::size_t> (tau)])
                 ++tau;
             best = tau;
             break;
@@ -182,35 +182,32 @@ void PitchDetector::analyse() noexcept
     const float aperiodicity = cmnd_[static_cast<std::size_t> (best)];
 
     // ---- refinement on the full-rate signal -------------------------------------------
-    const double coarse = (best + parabolicOffset (cmnd_[static_cast<std::size_t> (best - 1)],
+    const double coarse = (best + parabolicOffset (cmnd_[static_cast<std::size_t> (best) - 1],
                                                    cmnd_[static_cast<std::size_t> (best)],
-                                                   cmnd_[static_cast<std::size_t> (best + 1)])) * decimation_;
+                                                   cmnd_[static_cast<std::size_t> (best) + 1])) * decimation_;
     const int wF = std::min (maxPeriod_, nF - static_cast<int> (std::ceil (coarse)) - decimation_ - 2);
     const int lo = std::max (minPeriod_, static_cast<int> (std::floor (coarse)) - decimation_ - 1);
     const int hi = std::min (maxPeriod_, static_cast<int> (std::ceil (coarse)) + decimation_ + 1);
 
-    double bestValue = 1.0e300, prevValue = 0.0, nextValue = 0.0;
+    // Any window size (2 x decimation + 3 lags: 73 at 384 kHz); the two neighbours of the
+    // best lag are recomputed afterwards instead of storing every value.
+    double bestValue = 1.0e300;
     int bestLag = lo;
-    double values[64] {};
-    const int count = std::min (64, hi - lo + 1);
     const float* xf = scratchF_.data();
-    for (int k = 0; k < count; ++k)
+    for (int tau = lo; tau <= hi; ++tau)
     {
-        const int tau = lo + k;
         const double sum = sumSquaredDiff (xf, xf + tau, wF);
-        values[k] = sum;
         if (sum < bestValue)
         {
             bestValue = sum;
             bestLag = tau;
         }
     }
-    const int bk = bestLag - lo;
     double refined = bestLag;
-    if (bk > 0 && bk < count - 1)
+    if (bestLag > lo && bestLag < hi)
     {
-        prevValue = values[bk - 1];
-        nextValue = values[bk + 1];
+        const double prevValue = sumSquaredDiff (xf, xf + bestLag - 1, wF);
+        const double nextValue = sumSquaredDiff (xf, xf + bestLag + 1, wF);
         refined += parabolicOffset (prevValue, bestValue, nextValue);
     }
 

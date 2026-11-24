@@ -37,6 +37,9 @@ inline constexpr int kDefaultMidiReference = 60; // middle C
 
 juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
 
+// Parses a number typed by the user. Returns false when the text is not a number.
+bool parseNumber (const juce::String& text, float& result);
+
 // Number of parameters in the frozen contract (used by tests).
 inline constexpr int kNumParameters = 8;
 

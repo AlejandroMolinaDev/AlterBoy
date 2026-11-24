@@ -29,6 +29,8 @@ void PsolaEngine::prepare (double sampleRate, int maxPeriodSamples)
     maxPeriod_ = std::max (16, maxPeriodSamples);
     latency_ = 2 * maxPeriod_;
     pseudoPeriod_ = std::min (static_cast<double> (maxPeriod_), sampleRate / 150.0);
+    refineStride_ = std::max (2, static_cast<int> (std::lround (sampleRate / 24000.0)));
+    refineStep_ = std::max (1, refineStride_ / 2);
 
     const auto inputSize = nextPowerOfTwo (static_cast<std::uint32_t> (6 * maxPeriod_ + 64));
     input_.assign (inputSize, 0.0f);
@@ -97,29 +99,46 @@ double PsolaEngine::refineMark (double previous, double predicted, double period
     // Pitch-synchronous refinement: choose the position near the prediction whose
     // surrounding period best matches (normalised cross-correlation) the period around
     // the previous mark. Keeps marks on the real glottal cycles through vibrato/jitter.
+    //
+    // Cost is bounded per mark (it all lands in one audio block): the correlation reads
+    // every `stride`-th sample (~24 kHz resolution, plenty for the correlation peak) and
+    // the candidates are scanned coarse-to-fine. At 44.1/48 kHz (stride 2, step 1) this is
+    // the exhaustive search; at 192 kHz it is ~25x cheaper (B28: per-block CPU spikes).
     const int half = std::max (2, static_cast<int> (period * 0.5));
     const int search = std::max (1, static_cast<int> (period * 0.125));
     const auto prev = static_cast<std::int64_t> (std::lround (previous));
     const auto pred = static_cast<std::int64_t> (std::lround (predicted));
 
-    double best = -1.0e300;
-    std::int64_t bestPos = pred;
-    for (auto c = pred - search; c <= pred + search; ++c)
-    {
+    const auto score = [&] (std::int64_t c) noexcept {
         double dot = 0.0, energy = 1.0e-12;
-        for (int i = -half; i < half; i += 2) // decimated by 2: plenty for the correlation peak
+        for (int i = -half; i < half; i += refineStride_)
         {
             const float a = input_[static_cast<std::uint32_t> (prev + i) & inputMask_];
             const float b = input_[static_cast<std::uint32_t> (c + i) & inputMask_];
             dot += static_cast<double> (a) * b;
             energy += static_cast<double> (b) * b;
         }
-        const double score = dot / std::sqrt (energy);
-        if (score > best)
+        return dot / std::sqrt (energy);
+    };
+
+    double best = -1.0e300;
+    std::int64_t bestPos = pred;
+    for (auto c = pred - search; c <= pred + search; c += refineStep_)
+        if (const double v = score (c); v > best)
         {
-            best = score;
+            best = v;
             bestPos = c;
         }
+    if (refineStep_ > 1) // fine pass around the coarse winner
+    {
+        const auto centre = bestPos;
+        for (auto c = centre - refineStep_ + 1; c < centre + refineStep_; ++c)
+            if (c != centre && c >= pred - search && c <= pred + search)
+                if (const double v = score (c); v > best)
+                {
+                    best = v;
+                    bestPos = c;
+                }
     }
     return static_cast<double> (bestPos);
 }
@@ -160,11 +179,21 @@ void PsolaEngine::generateAnalysisMarks (const PitchDetector& detector) noexcept
     }
 }
 
-void PsolaEngine::addGrain (const Mark& analysis, double synthesisTime, float formantRatio) noexcept
+void PsolaEngine::addGrain (const Mark& analysis, double synthesisTime, float formantRatio, double pitchRatio) noexcept
 {
-    // Output half-length: one analysis period resampled by the formant ratio, capped
-    // at maxPeriod so the fixed latency always covers the grain.
-    const double half = std::min (analysis.period / formantRatio, static_cast<double> (maxPeriod_));
+    // Output half-length in analysis periods, adaptive to the pitch ratio (chosen with the
+    // quality matrix, tools/analysis/quality_matrix.py):
+    //  * ratio <= 1 (pitch down): the classic 1.0 period. Synthesis marks are >= one period
+    //    apart, so shorter grains would leave silent gaps (audible as clicks / chopping).
+    //  * ratio >= 1.25 (pitch up): 0.8 period, which reduces the worst-case
+    //    harmonic-envelope error by ~25 %; in between, 1/ratio.
+    //  * never shorter than formant/ratio periods: the output half-length (divided by the
+    //    formant ratio below) then stays >= the synthesis spacing (period / ratio), so this
+    //    shortening can never open gaps between grains when the formant is raised too.
+    const double halfPeriods = std::min (1.0, std::max (std::clamp (1.0 / pitchRatio, 0.8, 1.0),
+                                                        static_cast<double> (formantRatio) / pitchRatio));
+    // Capped at maxPeriod so the fixed latency always covers the grain.
+    const double half = std::min (analysis.period * halfPeriods / formantRatio, static_cast<double> (maxPeriod_));
     const auto first = std::max (static_cast<std::int64_t> (std::ceil (synthesisTime - half)), lastEmitted_ + 1);
     const auto last = static_cast<std::int64_t> (std::floor (synthesisTime + half));
 
@@ -207,7 +236,7 @@ void PsolaEngine::generateSynthesisMarks (const Controls& controls) noexcept
 
         const auto ratio = std::exp2 (logRatio_);
         const auto formant = static_cast<float> (std::exp2 (logFormant_));
-        addGrain (*mark, nextSynthesis_, formant);
+        addGrain (*mark, nextSynthesis_, formant, ratio);
 
         lastRatio_ = static_cast<float> (ratio);
         lastF0_ = mark->f0;

@@ -1,5 +1,7 @@
 #include "plugin/PresetManager.h"
 
+#include <cmath>
+
 #include "plugin/Parameters.h"
 
 namespace metamorfo
@@ -107,7 +109,7 @@ void PresetManager::applyValues (const Values& values)
 {
     for (const auto& [paramId, plain] : values)
     {
-        if (locks_.isLocked (paramId))
+        if (locks_.isLocked (paramId) || ! std::isfinite (plain)) // 'nan' / 'inf' in a file (B23)
             continue;
         if (auto* param = state_.getParameter (paramId))
         {
@@ -184,15 +186,33 @@ void PresetManager::previous()
         load ((std::max (0, currentIndex()) - 1 + n) % n);
 }
 
+namespace
+{
+// A single, harmless path component: legal characters, no separators, no leading or
+// trailing dots/spaces (so never "." or ".."), bounded length. Empty -> fallback (B22).
+juce::String safeComponent (const juce::String& text, const juce::String& fallback)
+{
+    auto legal = juce::File::createLegalFileName (text.trim())
+                     .removeCharacters ("/\\")
+                     .trimCharactersAtStart (". ")
+                     .trimCharactersAtEnd (". ");
+    if (legal.length() > 100)
+        legal = legal.substring (0, 100).trimEnd();
+    return legal.isEmpty() ? fallback : legal;
+}
+} // namespace
+
 juce::File PresetManager::saveUserPreset (const juce::String& name, const juce::String& category)
 {
-    const auto safeName = juce::File::createLegalFileName (name.trim().isEmpty() ? juce::String ("Preset") : name.trim());
-    const auto folder = userDirectory_.getChildFile (juce::File::createLegalFileName (category));
-    folder.createDirectory();
+    const auto safeName = safeComponent (name, "Preset");
+    const auto safeCategory = safeComponent (category, kUserCategory);
+    const auto folder = userDirectory_.getChildFile (safeCategory);
+    if (! folder.isAChildOf (userDirectory_) || ! folder.createDirectory())
+        return {};
 
     juce::XmlElement xml ("MetamorfoPreset");
     xml.setAttribute ("name", name.trim().isEmpty() ? safeName : name.trim());
-    xml.setAttribute ("category", category);
+    xml.setAttribute ("category", safeCategory);
     xml.setAttribute ("version", 1);
     for (const auto& [paramId, value] : currentValues())
     {
@@ -203,8 +223,9 @@ juce::File PresetManager::saveUserPreset (const juce::String& name, const juce::
         p->setAttribute ("value", value);
     }
 
-    const auto file = folder.getChildFile (safeName + kFileExtension);
-    xml.writeTo (file);
+    auto file = folder.getChildFile (safeName + kFileExtension);
+    if (! xml.writeTo (file)) // read-only folder, disk full...: report it to the caller
+        return {};
     refresh();
     setCurrentName (xml.getStringAttribute ("name"));
     return file;

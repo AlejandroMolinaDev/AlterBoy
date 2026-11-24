@@ -56,6 +56,9 @@ void MetamorfoProcessor::prepareEngine (double sampleRate, int maxBlock)
     mixSmoothed_.setCurrentAndTargetValue (mixParam_->load() / 100.0f);
     driveSmoothed_.reset (sampleRate, 0.03);
     driveSmoothed_.setCurrentAndTargetValue (driveParam_->load());
+    bypassSmoothed_.reset (sampleRate, 0.02);
+    bypassSmoothed_.setCurrentAndTargetValue (0.0f);
+    firstBlock_ = true;
 }
 
 void MetamorfoProcessor::prepareToPlay (double sampleRate, int maximumExpectedSamplesPerBlock)
@@ -95,7 +98,24 @@ bool MetamorfoProcessor::isBusesLayoutSupported (const BusesLayout& layouts) con
 
 void MetamorfoProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
+    process (buffer, midi, false);
+}
+
+void MetamorfoProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
+{
+    process (buffer, midi, true);
+}
+
+void MetamorfoProcessor::process (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi, bool bypassed) noexcept
+{
     juce::ScopedNoDenormals noDenormals;
+
+    // The engine keeps running while bypassed (constant CPU, seamless return); only the
+    // output is replaced by the delayed dry signal.
+    bypassSmoothed_.setTargetValue (bypassed ? 1.0f : 0.0f);
+    if (firstBlock_)
+        bypassSmoothed_.setCurrentAndTargetValue (bypassed ? 1.0f : 0.0f);
+    firstBlock_ = false;
 
     midiPitch_.setPortamento (portamentoParam_->load(), getSampleRate() > 0.0 ? getSampleRate() : 44100.0);
 
@@ -258,6 +278,7 @@ void MetamorfoProcessor::renderSegment (juce::AudioBuffer<float>& buffer, int st
         const float identity = engine_.identityGain();
         const float mix = mixSmoothed_.getNextValue();
         const float drive = driveSmoothed_.getNextValue();
+        const float bypass = bypassSmoothed_.getNextValue();
 
         // Engine -> Drive -> Mix (SPEC §4). Two taps of the per-channel input delay:
         // `engineTap` aligns with the engine output, `dryTap` with the final output.
@@ -273,7 +294,9 @@ void MetamorfoProcessor::renderSegment (juce::AudioBuffer<float>& buffer, int st
             // Neutral settings: the processed signal is the exactly delayed input (bit-exact).
             const float processed = identity >= 1.0f ? alignedInput : identity * alignedInput + (1.0f - identity) * wet;
             const float driven = drive_[static_cast<std::size_t> (ch)].process (processed, drive);
-            out[ch][i] = dry + mix * (driven - dry);
+            const float result = dry + mix * (driven - dry);
+            // Host bypass: exactly the delayed input once the 20 ms fade is complete.
+            out[ch][i] = bypass <= 0.0f ? result : (bypass >= 1.0f ? dry : result + bypass * (dry - result));
         }
         dryWrite_ = (dryWrite_ + 1) & dryMask_;
     }
