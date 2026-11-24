@@ -37,10 +37,12 @@ int processAndCount (MetamorfoProcessor& p, juce::AudioBuffer<float>& buffer, ju
 
     p.processBlock (buffer, midi);
 
+    // Neutral settings: output = input delayed by the reported latency, bit-exact.
+    const int latency = p.getLatencySamples();
     int mismatches = 0;
     for (int ch = 0; ch < 2; ++ch)
         for (int i = 0; i < numSamples; ++i)
-            if (buffer.getSample (ch, i) != testSignal (ch, position + i, seed))
+            if (buffer.getSample (ch, i) != metamorfo::test::expectedNeutral (ch, position + i, latency, seed))
                 ++mismatches;
     return mismatches;
 }
@@ -137,6 +139,7 @@ TEST_CASE ("Sample rate and block size can change without releaseResources", "[h
             processAndCount (p, buffer, midi, 32, position, 0);
 
         REQUIRE (tryPrepare (p, Set::stereo(), Set::stereo(), config.block, config.rate));
+        position = 0; // prepareToPlay clears all history: the stream restarts
         CHECK (p.getMidiActivity().heldNote.load() == -1);
         CHECK (p.getLatencySamples() == p.getEngineLatencySamples());
         CHECK (p.getPreparedSampleRate() == config.rate);
@@ -177,24 +180,26 @@ TEST_CASE ("State save/load and automation while audio is running", "[host][thre
     MetamorfoProcessor p;
     REQUIRE (tryPrepare (p, Set::stereo(), Set::stereo(), 256));
 
-    // A reference state with non-default values.
-    auto* pitch = p.getParameters().getParameter (id::pitch);
-    pitch->setValueNotifyingHost (pitch->convertTo0to1 (3.0f));
+    // A reference state with a non-default value that does not change the audio
+    // (so the output can still be checked bit-exactly).
+    auto* reference_ = p.getParameters().getParameter (id::midiReference);
+    reference_->setValueNotifyingHost (reference_->convertTo0to1 (48.0f));
     juce::MemoryBlock reference;
     p.getStateInformation (reference);
 
     std::atomic<bool> running { true };
     std::atomic<int> mismatches { 0 };
 
-    // Audio thread: processes continuously and automates `formant` like a host would.
+    // Audio thread: processes continuously and automates `portamento` like a host would
+    // (a parameter that does not change the audio without MIDI, so the output can be checked).
     std::thread audio ([&] {
         juce::AudioBuffer<float> buffer (2, 4096);
         juce::MidiBuffer midi;
-        auto* formant = p.getParameters().getParameter (id::formant);
+        auto* automated = p.getParameters().getParameter (id::portamento);
         int position = 0, step = 0;
         while (running.load())
         {
-            formant->setValueNotifyingHost (static_cast<float> (step++ % 100) / 100.0f);
+            automated->setValueNotifyingHost (static_cast<float> (step++ % 100) / 100.0f);
             mismatches += processAndCount (p, buffer, midi, 256, position, 0);
             position += 256;
         }
@@ -214,7 +219,7 @@ TEST_CASE ("State save/load and automation while audio is running", "[host][thre
     }
 
     CHECK (mismatches.load() == 0);
-    CHECK (p.getParameters().getRawParameterValue (id::pitch)->load() == 3.0f);
+    CHECK (p.getParameters().getRawParameterValue (id::midiReference)->load() == 48.0f);
 }
 
 TEST_CASE ("Editor can be opened and closed repeatedly while audio is running", "[host][threads][ui]")

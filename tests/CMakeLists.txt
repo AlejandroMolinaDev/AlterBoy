@@ -8,7 +8,8 @@ add_executable(MetamorfoTests
   unit/StateTests.cpp
   unit/HostBehaviourTests.cpp
   unit/LatencyTests.cpp
-  unit/PitchDetectorTests.cpp)
+  unit/PitchDetectorTests.cpp
+  unit/EngineTests.cpp)
 
 target_compile_definitions(MetamorfoTests PRIVATE
   JUCE_STANDALONE_APPLICATION=1)

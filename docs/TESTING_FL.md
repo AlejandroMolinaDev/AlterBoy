@@ -122,3 +122,23 @@ En la Fase 1 la UI todavía no tiene el selector de modo, y Robot aún no cambia
 2. **Esperado:** la línea **ENTRADA** muestra la nota cantada con sus cents, por ejemplo `A3 +12¢`. Debe ser estable en las notas sostenidas y sin saltos de octava.
 3. En respiraciones, sibilantes ("s", "sh") y silencios muestra `--`.
 4. En la Fase 2, **SALIDA** coincide con ENTRADA porque todavía no se procesa el audio.
+
+---
+
+## Fase 3: tono, formante, Link y Mix
+
+1. **Transponer:** en *Browse parameters*, sube **Pitch** a +7.
+   - La voz sube una quinta.
+   - SALIDA muestra la nota de ENTRADA + 7.
+   - Prueba también ±12 y ±1.
+2. **Formante:** Pitch en 0, **Formant** en −3.
+   - La voz suena con más cuerpo, a la misma altura.
+   - Prueba +6 (más clara) y −6 (más grave).
+3. **Link:** Pitch en +5 y **Link** activado. El timbre sube junto con la altura (efecto cinta).
+4. **Mix:**
+   1. Duplica la pista de voz sin el plugin.
+   2. Pon Mix en 50 % y Pitch en +12.
+   3. ✅ La octava queda **alineada en el tiempo** con la voz original, sin eco.
+5. **Compensación de latencia (PDC):**
+   1. Con Mix en 0 %, invierte la fase de la copia sin plugin.
+   2. ✅ Se cancelan por completo (silencio). Eso confirma que FL compensa los 33,3 ms.

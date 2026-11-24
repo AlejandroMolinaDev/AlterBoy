@@ -17,7 +17,8 @@ include(cmake/Dependencies.cmake)
 # ---------------------------------------------------------------------------
 add_library(metamorfo_dsp STATIC
   src/dsp/MidiPitchControl.cpp
-  src/dsp/PitchDetector.cpp)
+  src/dsp/PitchDetector.cpp
+  src/dsp/PsolaEngine.cpp)
 target_include_directories(metamorfo_dsp PUBLIC src)
 target_link_libraries(metamorfo_dsp PRIVATE metamorfo_warnings)
 

@@ -48,11 +48,13 @@ void checkPassthrough (const Set& in, const Set& out, int preparedBlockSize, con
 
         p.processBlock (buffer, midi);
 
+        // Neutral settings: bit-exact copy of the input, delayed by the reported latency.
+        const int latency = p.getLatencySamples();
         for (int ch = 0; ch < numOut; ++ch)
         {
             const int sourceChannel = numIn == 1 ? 0 : ch;
             for (int i = 0; i < blockSize; ++i)
-                REQUIRE (buffer.getSample (ch, i) == testSignal (sourceChannel, position + i));
+                REQUIRE (buffer.getSample (ch, i) == metamorfo::test::expectedNeutral (sourceChannel, position + i, latency));
         }
 
         position += blockSize;
@@ -95,12 +97,26 @@ TEST_CASE ("Processor passthrough is bit-exact", "[processor]")
     SECTION ("huge prepared block") { checkPassthrough (Set::stereo(), Set::stereo(), 4096, blocks); }
 }
 
-TEST_CASE ("Processor reports zero latency in phase 1", "[processor]")
+TEST_CASE ("Processor reports a fixed latency of two 60 Hz periods", "[processor][latency]")
 {
-    MetamorfoProcessor p;
-    prepare (p, Set::stereo(), Set::stereo(), 256, 44100.0);
-    CHECK (p.getLatencySamples() == 0);
-    CHECK (p.getLatencySamples() == p.getEngineLatencySamples());
+    for (const double rate : { 44100.0, 48000.0, 96000.0, 192000.0 })
+    {
+        MetamorfoProcessor p;
+        prepare (p, Set::stereo(), Set::stereo(), 256, rate);
+        const int expected = 2 * static_cast<int> (std::ceil (rate / 60.0));
+        CHECK (p.getLatencySamples() == expected);
+        CHECK (p.getLatencySamples() == p.getEngineLatencySamples());
+        CHECK (1000.0 * p.getLatencySamples() / rate < 34.0); // 33.3 ms (SPEC §4.5 cap: 60 ms)
+
+        // Fixed: parameter changes never alter it.
+        auto* pitch = p.getParameters().getParameter (metamorfo::params::id::pitch);
+        pitch->setValueNotifyingHost (pitch->convertTo0to1 (7.0f));
+        juce::AudioBuffer<float> buffer (2, 256);
+        buffer.clear();
+        juce::MidiBuffer midi;
+        p.processBlock (buffer, midi);
+        CHECK (p.getLatencySamples() == expected);
+    }
 }
 
 TEST_CASE ("Processor sanitises NaN and Inf", "[processor]")
@@ -128,22 +144,31 @@ TEST_CASE ("Processor flushes denormals coming from the input", "[processor]")
     prepare (p, Set::stereo(), Set::stereo(), 64);
 
     const float tiny = std::numeric_limits<float>::min();
+    const int latency = p.getLatencySamples();
     juce::AudioBuffer<float> buffer (2, 64);
-    for (int ch = 0; ch < 2; ++ch)
-        for (int i = 0; i < 64; ++i)
-            buffer.setSample (ch, i, (i % 2 == 0 ? 0.25f : -0.25f) * tiny); // subnormal values
-    buffer.setSample (0, 10, 0.5f);                                         // normal value survives
-
     juce::MidiBuffer midi;
-    p.processBlock (buffer, midi);
+    float survivor = 0.0f;
 
-    for (int ch = 0; ch < 2; ++ch)
-        for (int i = 0; i < 64; ++i)
-        {
-            const float x = buffer.getSample (ch, i);
-            REQUIRE ((x == 0.0f || std::abs (x) >= tiny));
-        }
-    CHECK (buffer.getSample (0, 10) == 0.5f);
+    for (int position = 0; position < latency + 128; position += 64)
+    {
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < 64; ++i)
+                buffer.setSample (ch, i, (i % 2 == 0 ? 0.25f : -0.25f) * tiny); // subnormal values
+        if (position == 0)
+            buffer.setSample (0, 10, 0.5f); // a normal value must survive (delayed)
+
+        p.processBlock (buffer, midi);
+
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < 64; ++i)
+            {
+                const float x = buffer.getSample (ch, i);
+                REQUIRE ((x == 0.0f || std::abs (x) >= tiny));
+                if (ch == 0 && position + i == 10 + latency)
+                    survivor = x;
+            }
+    }
+    CHECK (survivor == 0.5f);
 }
 
 TEST_CASE ("Processor publishes received MIDI notes", "[processor][midi]")

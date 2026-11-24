@@ -27,6 +27,13 @@ inline float testSignal (int channel, int sampleIndex, int seed = 0)
            + 0.001f * static_cast<float> (channel);
 }
 
+// Expected output of the processor at neutral settings: the input delayed by the
+// reported latency (silence before the first delayed sample).
+inline float expectedNeutral (int channel, int sampleIndex, int latency, int seed = 0)
+{
+    return sampleIndex >= latency ? testSignal (channel, sampleIndex - latency, seed) : 0.0f;
+}
+
 // Thread-safe variant (no Catch2 assertions): returns false if the layout is rejected.
 inline bool tryPrepare (MetamorfoProcessor& p, const Set& in, const Set& out, int blockSize, double rate = 48000.0)
 {

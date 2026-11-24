@@ -8,7 +8,7 @@ La especificación completa está en [SPEC.md](SPEC.md). Este archivo lleva el e
 |---|---|---|
 | 1. Esqueleto + MIDI | ✅ Implementada · ⏳ falta tu prueba en FL | CMake + JUCE 9 + CLAP, passthrough, MIDI, CI, docs |
 | 2. Detector de tono | ✅ Implementada (2026-11-24) · ⏳ falta tu prueba en FL | YIN diezmado + refinamiento a la frecuencia completa, voicing con 3 indicadores, display ENTRADA/SALIDA |
-| 3. Motor de tono y formantes | Pendiente | PSOLA, formante, Link, Transponer, Mix alineado, latencia fija |
+| 3. Motor de tono y formantes | ✅ Implementada (2026-11-24) · ⏳ falta tu escucha en FL | TD-PSOLA, formante por re-muestreo de granos, Link, Transponer, Mix alineado, latencia fija de 33,3 ms |
 | 4. Cuantizar, Robot y MIDI | Pendiente | Reutiliza `MidiPitchControl`; añade precisión de muestra y portamento |
 | 5. Drive | Pendiente | Tríodo, sobremuestreo 2× IIR, compensación de nivel |
 | 6. UI final + presets | Pendiente | Diseño del §8, presets, bloqueos, ayuda MIDI |
@@ -26,8 +26,8 @@ La especificación completa está en [SPEC.md](SPEC.md). Este archivo lleva el e
 - ~~**Fase 2:** f0 mínima frente a latencia~~ → decidido en automático (ver Decisiones): f0 de 60 a 1200 Hz y latencia del motor **2 × periodo máximo = 33,3 ms**.
 - ~~**Fase 2:** PFFFT frente a `juce::dsp::FFT`~~ → no hace falta FFT: YIN directo sobre la señal diezmada a unos 11-12 kHz, con sumas vectorizadas, cuesta 0,42 % de un núcleo.
 - **Fase 2 (pendiente menor):** MPM como validador no se implementó. YIN ya prefiere el periodo más corto por debajo del umbral, que evita los errores de sub-octava, y la mediana de 5 más la histéresis cubren los saltos de octava. Los tests con voz sintética de E2 a E5 no muestran errores de octava. Se reevaluará si aparecen en voz real.
-- **Fase 3:** prueba A/B de formante: re-muestreo de grano frente a envolvente cepstral, con el harness de render.
-- **Fase 3:** plan B si PSOLA no queda utilizable en ±12 st: phase vocoder con preservación de envolvente para desplazamientos grandes. Se consulta antes de implementarlo.
+- **Fase 3 (pendiente):** A/B de formante con envolvente cepstral. Se implementó solo el re-muestreo de granos: no añade latencia, cuesta poco y cumple las pruebas objetivas (centroide +37 % / −31 % con ±6, f0 estable en ±5 ¢, −2 sutil). La comparación cepstral queda pendiente para cuando haya escucha en voz real.
+- **Fase 3 (pendiente):** plan B si ±12 st no queda utilizable en voz real (phase vocoder con preservación de envolvente). Las pruebas objetivas pasan (±12 st con 0,1 ¢); la valoración de oído está pendiente de tu prueba en FL.
 - **Fase 4:** procesar el MIDI con precisión de muestra. En la Fase 1 se procesa por bloque.
 - **Fase 4:** evaluar `CLAP_PROCESS_EVENTS_RESOLUTION_SAMPLES` para automatización precisa en CLAP.
 - **Fase 6:** probar el escalado DPI en FL Studio en Windows. Desde JUCE 8.0.13 hay reportes de cambios en la conciencia de DPI del proceso host.
@@ -75,6 +75,12 @@ No hay ninguna otra excepción. pluginval (nivel 10, VST3 y AU), auval y el vali
 | Auditoría | Parámetros con pasos decimales exactos (`steppedRange`) | En arm64, el ajuste por pasos de JUCE dejaba residuos (0 → 1.79e-7). Es el bug B2. |
 | Auditoría | El sanitizador también elimina los denormales | Venían desde la entrada y pasaban a la salida (B4). |
 | Auditoría | Headers de CLAP marcados `SYSTEM` | Sus warnings (más de 500 en clang) tapaban los nuestros (B6). |
+| Fase 3 | Latencia fija = 2 × periodo máximo (60 Hz) = 33,3 ms a cualquier sample rate (1470 / 1600 / 3200 muestras a 44,1 / 48 / 96 kHz) | Decidido en automático: conserva el rango de 60 a 1200 Hz del SPEC. Supera en 3,3 ms el objetivo de 30 ms, dentro del máximo de 60. Con 70 Hz serían 28,6 ms, perdiendo bajos profundos |
+| Fase 3 | TD-PSOLA: marcas de análisis a un periodo local (pseudo-periodo de 150 Hz en tramos no sonoros), marcas de síntesis a Pa/β, grano Hann de ±1 periodo **re-muestreado por el ratio de formante** y overlap-add normalizado por la suma de ventanas (piso 0,5) | Formante independiente sin latencia extra. Con Link, formante = ratio de pitch (tipo cinta) |
+| Fase 3 | Ratio de pitch suavizado en log entre granos (20 ms; tramos no sonoros → 1 en 15 ms), formante suavizado 30 ms, Mix 20 ms. Límite de ratio: ×1/8 a ×8 | Sin zipper. Fundidos en las transiciones de sonoridad. Robot puede subir una voz grave hasta Do5 |
+| Fase 3 | Ajustes neutros (Transponer, PITCH 0, FORMANT 0, sin MIDI) → crossfade de 20 ms a la entrada retrasada exacta, **por canal** | Transparencia bit-exacta por defecto. En estéreo no se pierde la imagen cuando no se procesa |
+| Fase 3 | En estéreo, el wet es la suma mono procesada y va a ambos canales; el dry es por canal | SPEC §2: se analiza la suma y se aplica el mismo procesamiento a ambos canales |
+| Fase 3 | `out = dry + mix · (procesado − dry)` | Mix 0 % y los ajustes neutros dan un null bit-exacto |
 | Fase 2 | Detector: HP de 55 Hz → diezmado a unos 11-12 kHz → YIN (umbral 0,15) → refinamiento parabólico a la frecuencia completa → mediana de 5 en cents + histéresis de octava (3 confirmaciones) | Error menor de 5 ¢ de 60 a 1200 Hz a 44,1, 48 y 96 kHz, a bajo costo (0,42 % de CPU) |
 | Fase 2 | Voicing: aperiodicidad < 0,20 / > 0,35, RMS > −50 / < −56 dBFS y ZCR < 0,20 / > 0,30, con histéresis | Ruido y sibilantes no sonoros, silencio no sonoro, onset sonoro en menos de 60 ms |
 | Fase 2 | Ventana de 2 periodos de 60 Hz y hop de 128 muestras a 48 kHz | Esa ventana fija la latencia del motor (Fase 3) |

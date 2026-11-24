@@ -41,6 +41,8 @@ ctest --preset release            # unit tests (Linux headless: xvfb-run -a ctes
 - Never compare parameter floats with platform-dependent residues: stepped params use `steppedRange`
   (exact decimal steps; arm64 regression B2).
 - Never trust the host block size: process in chunks of at most the prepared size (FL can exceed it).
+- Engine latency = 2 x ceil(sr/60) (33.3 ms); neutral settings must stay bit-exact (identity path,
+  `out = dry + mix*(processed-dry)`); tests compare against the input delayed by the latency.
 - Smoothed parameters (no zipper noise). Latency is fixed per sample rate and always reported
   with `setLatencySamples()` in `prepareToPlay`; the dry path is delayed by the same amount.
 - UI reads audio state only through atomics; closing the editor never affects audio.
@@ -68,7 +70,8 @@ State = APVTS XML, root `MetamorfoState`, attribute `stateVersion` (currently 1)
 ```
 cmake/            GetCPM.cmake (pinned CPM), Dependencies.cmake (ALL pinned deps), CompilerSettings.cmake
 src/dsp/          JUCE-free RT DSP (static lib metamorfo_dsp, strict warnings): Biquad, PitchDetector
-                  (decimated YIN + full-rate refinement), VoicingDetector, MidiPitchControl
+                  (decimated YIN + full-rate refinement), VoicingDetector, ModeController,
+                  PsolaEngine (TD-PSOLA, formant = grain resampling, Link), MidiPitchControl
 src/plugin/       PluginProcessor, Parameters
 src/ui/           PluginEditor
 tests/unit/       Catch2 tests (own copy of JUCE + core, custom main with ScopedJuceInitialiser_GUI)

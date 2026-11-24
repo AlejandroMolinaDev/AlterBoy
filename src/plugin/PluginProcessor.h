@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 
@@ -8,6 +9,7 @@
 
 #include "dsp/MidiPitchControl.h"
 #include "dsp/PitchDetector.h"
+#include "dsp/PsolaEngine.h"
 
 namespace metamorfo
 {
@@ -76,8 +78,8 @@ public:
     // Human-readable plugin format ("VST3", "CLAP", "AU", "Standalone", ...).
     juce::String getFormatName() const;
 
-    // Engine latency in samples. Fixed for a given sample rate (0 in phase 1).
-    int getEngineLatencySamples() const noexcept { return 0; }
+    // Total latency in samples (engine: 2 x the 60 Hz period). Fixed per sample rate.
+    int getEngineLatencySamples() const noexcept { return totalLatency_; }
 
     double getPreparedSampleRate() const noexcept { return preparedSampleRate_.load (std::memory_order_relaxed); }
     int getPreparedBlockSize() const noexcept { return preparedBlockSize_.load (std::memory_order_relaxed); }
@@ -85,12 +87,32 @@ public:
 private:
     void handleMidi (const juce::MidiBuffer& midi) noexcept;
     void processChunk (juce::AudioBuffer<float>& buffer, int startSample, int numSamples) noexcept;
+    void prepareEngine (double sampleRate, int maxBlock);
+    [[nodiscard]] dsp::PsolaEngine::Controls readControls() const noexcept;
 
     juce::AudioProcessorValueTreeState parameters_;
     dsp::MidiPitchControl midiPitch_;
     MidiActivity midiActivity_;
     dsp::PitchDetector pitchDetector_;
+    dsp::PsolaEngine engine_;
     AnalysisDisplay analysisDisplay_;
+
+    // Dry path delayed by exactly the reported latency (one ring per output channel).
+    std::array<std::vector<float>, 2> dryDelay_;
+    std::uint32_t dryMask_ = 0, dryWrite_ = 0;
+    int totalLatency_ = 0;
+
+    juce::SmoothedValue<float> mixSmoothed_ { 1.0f };
+
+    // Cached parameter pointers (lock-free reads on the audio thread).
+    std::atomic<float>* pitchParam_ = nullptr;
+    std::atomic<float>* formantParam_ = nullptr;
+    std::atomic<float>* linkParam_ = nullptr;
+    std::atomic<float>* modeParam_ = nullptr;
+    std::atomic<float>* driveParam_ = nullptr;
+    std::atomic<float>* mixParam_ = nullptr;
+    std::atomic<float>* midiReferenceParam_ = nullptr;
+    std::atomic<float>* portamentoParam_ = nullptr;
 
     std::atomic<double> preparedSampleRate_ { 0.0 };
     std::atomic<int> preparedBlockSize_ { 0 };
