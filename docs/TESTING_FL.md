@@ -215,3 +215,17 @@ Capturas de referencia: `docs/images/ui_default.png` y `docs/images/ui_link_cuan
 11. **Persistencia:**
     1. Guarda el `.flp` con bloqueos, LINK y un preset de usuario cargado.
     2. Ciérralo y vuelve a abrirlo. ✅ Se conserva todo.
+
+---
+
+## Fase 7: instalación limpia
+
+1. **Windows:**
+   1. Desinstala versiones anteriores y borra los `Metamorfo.vst3` y `.clap` sueltos que hayas copiado antes.
+   2. Ejecuta `Metamorfo-<versión>-Windows-Setup.exe`.
+   3. En FL: *Manage plugins → Find installed plugins*. ✅ Aparece Metamorfo (VST3 y CLAP) como efecto.
+   4. Desinstala desde *Configuración → Aplicaciones*. ✅ Desaparecen `C:\Program Files\Common Files\VST3\Metamorfo.vst3` y `...\CLAP\Metamorfo.clap`.
+2. **macOS:**
+   1. Abre el `.pkg` con clic derecho → Abrir.
+   2. En FL, escanea. ✅ Aparece Metamorfo.
+   3. En Logic, ✅ aparece en *Audio FX* (AU).

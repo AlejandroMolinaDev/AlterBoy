@@ -71,7 +71,7 @@ jobs:
           python3 -m venv .venv-audit
           .venv-audit/bin/pip install --quiet -r tools/analysis/requirements.txt
           .venv-audit/bin/python tools/analysis/run_audit.py \
-            --render build/release/tests/MetamorfoRender --out tests/render/output --phase 6 --fail-on-x
+            --render build/release/tests/MetamorfoRender --out tests/render/output --phase 7 --fail-on-x
 
       - name: Upload DSP audit table
         if: runner.os == 'macOS' && always()
@@ -157,6 +157,71 @@ jobs:
             tools-bin/vst3-validator/validator \
             "$clap"
 
+      # ---------------------------------------------------------------- installers (phase 7)
+      - name: Build installer (Windows, Inno Setup)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $version = (Select-String -Path CMakeLists.txt -Pattern 'project\(Metamorfo VERSION ([0-9.]+)').Matches[0].Groups[1].Value
+          $artefacts = (Resolve-Path $env:ARTEFACTS).Path
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" "/DArtefactsDir=$artefacts" installer\windows\Metamorfo.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+
+      - name: Test installer (Windows) - clean install, probe installed binaries, uninstall
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem dist -Filter "Metamorfo-*-Windows-Setup.exe").FullName
+          $p = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "installer exit code $($p.ExitCode)" }
+          $vst3 = "$env:CommonProgramFiles\VST3\Metamorfo.vst3"
+          $clap = "$env:CommonProgramFiles\CLAP\Metamorfo.clap"
+          $app = "$env:ProgramFiles\Metamorfo\Metamorfo.exe"
+          foreach ($f in $vst3, $clap, $app) { if (-not (Test-Path $f)) { throw "missing $f" }; Write-Host "installed: $f" }
+          & build\release\tests\MetamorfoHostProbe.exe vst3 $vst3; if ($LASTEXITCODE -ne 0) { throw "probe VST3 failed" }
+          & build\release\tests\MetamorfoHostProbe.exe clap $clap; if ($LASTEXITCODE -ne 0) { throw "probe CLAP failed" }
+          Start-Process "$env:ProgramFiles\Metamorfo\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
+          for ($i = 0; $i -lt 30 -and ((Test-Path $vst3) -or (Test-Path $clap) -or (Test-Path $app)); $i++) { Start-Sleep 1 }
+          foreach ($f in $vst3, $clap, $app) { if (Test-Path $f) { throw "not removed by the uninstaller: $f" } }
+          Write-Host "Clean install + uninstall OK"
+
+      - name: Upload Windows installer
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v5
+        with:
+          name: Metamorfo-win-Installer
+          path: dist/Metamorfo-*-Windows-Setup.exe
+
+      - name: Build installer (macOS, pkg)
+        if: runner.os == 'macOS'
+        run: |
+          version=$(sed -nE 's/^project\(Metamorfo VERSION ([0-9.]+).*/\1/p' CMakeLists.txt)
+          bash installer/macos/build_pkg.sh "$ARTEFACTS" "$version"
+
+      - name: Test installer (macOS) - install, probe installed binaries, auval from /Library
+        if: runner.os == 'macOS'
+        run: |
+          rm -rf ~/Library/Audio/Plug-Ins/Components/Metamorfo.component   # left by the validation step
+          sudo installer -pkg dist/Metamorfo-*-macOS.pkg -target /
+          for f in /Library/Audio/Plug-Ins/VST3/Metamorfo.vst3 /Library/Audio/Plug-Ins/Components/Metamorfo.component \
+                   /Library/Audio/Plug-Ins/CLAP/Metamorfo.clap /Applications/Metamorfo.app; do
+            test -e "$f" || { echo "missing $f"; exit 1; }
+            echo "installed: $f"
+          done
+          build/release/tests/MetamorfoHostProbe vst3 /Library/Audio/Plug-Ins/VST3/Metamorfo.vst3
+          build/release/tests/MetamorfoHostProbe clap /Library/Audio/Plug-Ins/CLAP/Metamorfo.clap
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          sleep 2
+          auval -v aumf Mmf1 Mtmf | tail -3
+
+      - name: Upload macOS installer
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v5
+        with:
+          name: Metamorfo-mac-Installer
+          path: dist/Metamorfo-*-macOS.pkg
+
       # ---------------------------------------------------------------- artefacts
       - name: Package macOS bundles
         if: runner.os == 'macOS'
@@ -166,13 +231,16 @@ jobs:
           ditto -c -k --keepParent "$ARTEFACTS/AU/Metamorfo.component" dist/Metamorfo-mac-AU.zip
           ditto -c -k --keepParent "$ARTEFACTS/CLAP/Metamorfo.clap" dist/Metamorfo-mac-CLAP.zip
           ditto -c -k --keepParent "$ARTEFACTS/Standalone/Metamorfo.app" dist/Metamorfo-mac-Standalone.zip
+          cp docs/GUIA_USUARIO_es.md dist/
 
       - name: Upload macOS artefacts
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v5
         with:
           name: Metamorfo-mac
-          path: dist/*.zip
+          path: |
+            dist/*.zip
+            dist/GUIA_USUARIO_es.md
 
       - name: Upload Windows VST3
         if: runner.os == 'Windows'

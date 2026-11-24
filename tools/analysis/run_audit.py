@@ -51,7 +51,7 @@ class Audit:
 
     # ------------------------------------------------------------------ plumbing
     def render(self, x: np.ndarray, sr: int, params: dict | None = None, notes=(), layout="stereo",
-               block=512, irregular=False, param_at=(), repeat=1, keep_as: str | None = None):
+               block=512, irregular=False, param_at=(), repeat=1, keep_as: str | None = None, preset: str | None = None):
         self.counter += 1
         tag = f"r{self.counter:04d}"
         src = self.work / f"{tag}_in.wav"
@@ -62,6 +62,8 @@ class Audit:
         cmd = [str(self.render_bin), "--in", str(src), "--out", str(dst), "--report", str(rep),
                "--layout", layout, "--repeat", str(repeat)]
         cmd += ["--blocks", "irregular"] if irregular else ["--block", str(block)]
+        if preset:
+            cmd += ["--preset", preset]
         for k, v in (params or {}).items():
             cmd += ["--param", f"{k}={v}"]
         for t, k, v in param_at:
@@ -334,9 +336,18 @@ class Audit:
         for name, params, notes in jobs:
             self.render(phrase, sr, params, notes=notes, keep_as=name)
         self.add("Renders", f"{len(jobs) + 1} WAV de escucha en tests/render/output/", f"{len(jobs) + 1} archivos",
-                 "uno por modo + variantes", True, "harness", "en Fase 1 todos suenan igual que la entrada")
-        self.add("Renders", "Un WAV por preset de fábrica (16)", "no existen presets", "16 archivos",
-                 False, "presets")
+                 "uno por modo + variantes", True, "harness", "para escucha A/B")
+        names = subprocess.run([str(self.render_bin), "--list-presets"], check=True, capture_output=True,
+                               text=True, encoding="utf-8").stdout.splitlines()
+        melody = ((0.0, 0.7, 60, 100), (0.7, 0.5, 64, 100), (1.2, 0.6, 67, 100), (1.8, 1.0, 72, 100))
+        written = 0
+        for i, name in enumerate(names):
+            safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in name.encode("ascii", "replace").decode())
+            _, rep = self.render(phrase, sr, {}, notes=melody if "MIDI" in name else (),
+                                 keep_as=f"preset_{i:02d}_{safe}.wav", preset=name)
+            written += 1 if rep["nan_count"] == 0 and rep["inf_count"] == 0 else 0
+        self.add("Renders", f"Un WAV por preset de fábrica ({len(names)})", f"{written} archivos sin NaN/Inf",
+                 f"≥ 16 archivos", written >= 16 and written == len(names), "presets")
 
     # ------------------------------------------------------------------ output
     def write(self):

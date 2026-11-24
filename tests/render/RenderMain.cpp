@@ -14,6 +14,8 @@
 //   --note start:duration:note:vel     MIDI note, times in seconds (repeatable)
 //   --repeat N                         process the input N times (CPU benchmark)
 //   --report path.json                 write a JSON report
+//   --preset "name"                    load a factory/user preset first (then --param overrides)
+//   --list-presets                     print the factory preset names (one per line) and exit
 
 #include <atomic>
 #include <cfloat>
@@ -79,6 +81,8 @@ struct Options
 {
     juce::File input, output, report;
     juce::String layout = "stereo";
+    juce::String preset;
+    bool listPresets = false;
     int block = 512;
     int prepared = -1;
     bool irregular = false;
@@ -127,6 +131,8 @@ Options parseArgs (const juce::StringArray& args)
         else if (a == "--prepared") o.prepared = next().getIntValue();
         else if (a == "--repeat") o.repeat = std::max (1, next().getIntValue());
         else if (a == "--param") o.initialParams.push_back (parseParam (next(), false));
+        else if (a == "--preset") o.preset = next();
+        else if (a == "--list-presets") o.listPresets = true;
         else if (a == "--param-at") o.timedParams.push_back (parseParam (next(), true));
         else if (a == "--note")
         {
@@ -139,6 +145,7 @@ Options parseArgs (const juce::StringArray& args)
         else fail ("unknown argument " + a);
     }
 
+    if (o.listPresets) return o;
     if (! o.input.existsAsFile()) fail ("input file not found");
     if (o.block < 1 || o.block > 65536) fail ("invalid block size");
     if (o.prepared < 0) o.prepared = o.irregular ? 512 : o.block;
@@ -155,6 +162,15 @@ void setParam (metamorfo::MetamorfoProcessor& p, const ParamChange& change)
 
 int run (const Options& o)
 {
+    if (o.listPresets)
+    {
+        metamorfo::MetamorfoProcessor p;
+        for (const auto& e : p.getPresets().entries())
+            if (e.factory)
+                std::cout << e.name << std::endl;
+        return 0;
+    }
+
     juce::AudioFormatManager formats;
     formats.registerBasicFormats();
     std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (o.input));
@@ -174,6 +190,8 @@ int run (const Options& o)
     layout.outputBuses.add (outSet);
     if (! processor.setBusesLayout (layout)) fail ("layout not supported: " + o.layout);
 
+    if (o.preset.isNotEmpty() && ! processor.getPresets().loadByName (o.preset))
+        fail ("unknown preset " + o.preset);
     for (const auto& change : o.initialParams)
         setParam (processor, change);
 

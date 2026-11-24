@@ -363,3 +363,42 @@ No pudiste probar en FL, así que automaticé todo lo que se puede verificar sin
   - export frente a reproducción
   - el escalado DPI
   - La sección "Prueba rápida" de [TESTING_FL.md](TESTING_FL.md) reúne solo esos puntos (unos 5 minutos).
+
+## 11. Estado tras las Fases 2 a 7 (2026-11-24, en automático)
+
+Se implementaron las Fases 2 a 7 sin pausas, a petición tuya. Cada fase se cerró con la Release compilada, los tests en verde, los validadores, la auditoría DSP con `--fail-on-x` y su commit `phase N:`.
+
+| Prueba | Resultado |
+|---|---|
+| CTest Release (Linux) | ✔ **63/63**: Catch2 (detector, motor, modos, drive, presets, host, latencia, estado…) + 2 host probes |
+| Auditoría DSP `--phase 7` | ✔ **77/77** (0 ✘, 0 ⏸, 0 ✔\*) |
+| Detector (senos de 80 a 1000 Hz y voz sintética) | 0,00 ¢ de error en la auditoría; menos de 5 ¢ a 44,1, 48 y 96 kHz en Catch2 |
+| Transponer ±1, ±7 y ±12 st | 0,0 a 0,4 ¢ |
+| Formante ±6 (pitch 0) | f0 estable (0,0 ¢); centroide +44 % / −30 % |
+| Link | f0 correcta; centroide ×1,38 con Link y ×1,07 sin Link (ideal ×1,04) |
+| Cuantizar +35 / −40 ¢ | +1,5 / −2,2 ¢ de la nota |
+| Robot (MIDI 72, PITCH +3, notas MIDI) | −1,4 ¢ |
+| Drive | H2 > H3 en 3 niveles × 4 drives; nivel ±1,5 dB; Drive 0 bit-exacto |
+| Mix 0 % | null perfecto (−∞) |
+| Latencia | medida = reportada: 1473 / 1603 / 3203 muestras a 44,1 / 48 / 96 kHz (33,4 ms) |
+| CPU, 1 instancia, 48 kHz, buffer 128 | 0,74 % (motor); **1,3 %** en el peor caso (pitch −12 + formante −6 + drive 12) |
+| Alocaciones en `processBlock` | 0 (120 renders) |
+| pluginval nivel 10 (VST3) · validador VST3 · clap-validator | ✔ SUCCESS · 47/47 · 18/0/3 |
+| Renders de escucha | 11 por modo + **17 presets de fábrica** en `tests/render/output/` |
+
+### Bugs encontrados y corregidos durante las Fases 2 a 7
+
+| ID | Hallazgo | Corrección |
+|---|---|---|
+| B9 | El detector consumía el 1 % de la CPU por sí solo: la suma acumulada con dependencia serial no se vectorizaba | 8 acumuladores independientes: 0,42 % |
+| B10 | Robot con vibrato quedaba a 6,4 ¢: las marcas de análisis, colocadas con el periodo estimado y suavizado, se desfasaban de los ciclos reales | Refinamiento síncrono de marcas por correlación cruzada; el ratio usa el periodo real de la marca: −1,4 ¢ |
+| B11 | Los cambios de nota MIDI sonaban 16,7 ms antes de su posición en el piano roll (el horizonte de síntesis va maxPeriod por detrás de la entrada) | Cola de MIDI sin locks retrasada maxPeriod muestras |
+| B12 | El Drive quedaba fuera de ±1,5 dB con Drive 12 a nivel alto (el make-up tocaba su tope de +12 dB) | Rango de compensación ampliado al de la ganancia de entrada |
+| B13 | El saturador costaba CPU aun con Drive = 0 (1,5 %) | Bypass real y `tanh` racional: 0,74 % |
+| B14 | En el CI de Windows, 11 tests "no se encontraban": CTest pasaba el "§" del nombre con otra codificación | Nombres de tests solo en ASCII (regla añadida a CLAUDE.md) |
+| B15 | Auditoría: el criterio de Link OFF comparaba contra ×1,00, cuando el centroide ideal con formantes preservados es ×1,04 | Se compara contra una voz ideal re-sintetizada |
+| B16 | Auditoría: el null de Drive 0 no alineaba la latencia | Alineado por la latencia reportada |
+
+### Lo que sigue sin poder verificarse aquí
+
+Escucha en voz real, prueba en FL Studio y los demás DAWs, tu aprobación visual y el DPI de Windows. La lista completa está en [ROADMAP.md](ROADMAP.md), sección "Pendiente para el lanzamiento".

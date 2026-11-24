@@ -12,7 +12,7 @@ La especificación completa está en [SPEC.md](SPEC.md). Este archivo lleva el e
 | 4. Cuantizar, Robot y MIDI | ✅ Implementada (2026-11-24) · ⏳ falta tu prueba en FL | Cuantizar (hard-tune con histéresis), Robot (MIDI 72 o nota MIDI), MIDI en los 3 modos con precisión de muestra, portamento de 0 a 200 ms |
 | 5. Drive | ✅ Implementada (2026-11-24) · ⏳ falta tu escucha | Tríodo asimétrico con polarización dinámica, 2× IIR halfband, compensación de nivel adaptativa |
 | 6. UI final + presets | ✅ Implementada (2026-11-24) · ⏳ falta tu revisión visual | Diseño del §8 (capturas en `docs/images/`), 17 presets de fábrica, presets de usuario, A/B, bloqueos, escala del 75 al 200 %, ayuda MIDI |
-| 7. Multi-DAW + distribución | Pendiente | DAW_MATRIX, instaladores, guía de usuario |
+| 7. Multi-DAW + distribución | ✅ Implementada (2026-11-24) · ⏳ falta la prueba en los DAWs | `DAW_MATRIX.md` (verificación automática; pruebas manuales por DAW pendientes), instalador Inno Setup (Windows) y `.pkg` (macOS) **probados en el CI** con instalación limpia + desinstalación, guía de usuario en español |
 
 ## Pendiente para aceptar la Fase 1
 
@@ -46,6 +46,15 @@ La especificación completa está en [SPEC.md](SPEC.md). Este archivo lleva el e
 - **Prueba en FL:** la parte automatizable ya corre en el CI (host probes VST3 y CLAP). Para aceptar la Fase 1 solo falta la "Prueba rápida" de [TESTING_FL.md](TESTING_FL.md).
 - **CI:** la slice x86_64 de macOS solo se verifica con `lipo`, porque el runner es arm64. Probarla en un Mac Intel o con Rosetta cuando sea posible.
 
+## Pendiente para el lanzamiento (no automatizable aquí)
+
+- [ ] Prueba en **FL Studio** en Windows (y macOS si es posible): "Prueba rápida" y secciones de las Fases 2 a 6 de [TESTING_FL.md](TESTING_FL.md).
+- [ ] Tu **aprobación visual** de la UI (`docs/images/`).
+- [ ] Escucha de calidad en voz real: ±12 st, formante sutil, hard-tune, Robot y Drive. Si ±12 no convence, se aplica el plan B (Fase 3).
+- [ ] Pruebas manuales en Ableton, Logic, Reaper, Bitwig, Studio One y Cubase: completar [DAW_MATRIX.md](DAW_MATRIX.md).
+- [ ] Renombrar el repositorio a `metamorfo` (requisito legal del §1).
+- [ ] Versión 1.0.0 cuando todo lo anterior esté en verde.
+
 ## Fuera de alcance
 
 - AAX (requiere SDK y firma de Avid) y VST2 (SDK descontinuado). Fuera de alcance según el SPEC §2.
@@ -76,6 +85,9 @@ No hay ninguna otra excepción. pluginval (nivel 10, VST3 y AU), auval y el vali
 | Auditoría | Parámetros con pasos decimales exactos (`steppedRange`) | En arm64, el ajuste por pasos de JUCE dejaba residuos (0 → 1.79e-7). Es el bug B2. |
 | Auditoría | El sanitizador también elimina los denormales | Venían desde la entrada y pasaban a la salida (B4). |
 | Auditoría | Headers de CLAP marcados `SYSTEM` | Sus warnings (más de 500 en clang) tapaban los nuestros (B6). |
+| Fase 7 | Instalador de Windows con Inno Setup 6 (en español; componentes VST3, CLAP y aplicación; `{commoncf64}\VST3` y `\CLAP`; desinstalador) | SPEC §10. El CI instala en silencio, carga los binarios **instalados** con el host probe y verifica la desinstalación limpia |
+| Fase 7 | `.pkg` de macOS con `pkgbuild` (bundles con firma ad-hoc dentro; script postinstall que refresca la caché AU). El `.pkg` no lleva firma: los instaladores no admiten firma ad-hoc, hace falta un certificado *Developer ID Installer* | El CI lo instala con `installer` y corre el host probe y auval desde `/Library`. El usuario abre el `.pkg` con clic derecho → Abrir |
+| Fase 7 | Versión 0.9.0 | Todas las funciones implementadas; 1.0.0 tras la validación manual |
 | Fase 6 | UI: lienzo base de 780 × 260 escalado con una transformación (75 a 200 %, 150 % por defecto, guardado en `Metamorfo.settings` del usuario), con aspecto 3:1 fijo y redimensionable | Nítida en HiDPI (vectorial), una sola fila |
 | Fase 6 | Estética propia: panel verde oliva con grano de pintura en polvo (ruido de semilla fija), tornillos, serigrafía hueso en Barlow Condensed (OFL), display de fósforo en Share Tech Mono (OFL), perillas crema lisas con tapa negra, palanca de 3 posiciones con LEDs, rojo solo para bloqueos | SPEC §8; nada imita al producto de referencia |
 | Fase 6 | Presets como valores planos (`*.mtmfpreset`, XML) en `Documentos/Metamorfo/Presets/<categoría>/`; la nota de referencia MIDI no se guarda en presets (es un ajuste del estudio); los bloqueos y el nombre del preset viajan en el estado del proyecto | Bloqueos respetados al cargar presets y al alternar A/B |

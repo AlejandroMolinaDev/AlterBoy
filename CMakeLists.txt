@@ -5,7 +5,7 @@ if(APPLE AND NOT CMAKE_OSX_ARCHITECTURES)
   set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures" FORCE)
 endif()
 
-project(Metamorfo VERSION 0.1.0 LANGUAGES C CXX)
+project(Metamorfo VERSION 0.9.0 LANGUAGES C CXX)
 
 option(METAMORFO_BUILD_TESTS "Build unit tests" ON)
 

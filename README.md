@@ -3,9 +3,11 @@
 Manipulador monofónico de tono y formantes vocales: VST3, AU, CLAP y Standalone para Windows y macOS.
 Su DAW principal es FL Studio.
 
-> **Estado: Fase 1 (esqueleto + MIDI).** El plugin todavía no procesa audio: deja pasar la señal
-> tal cual y muestra la última nota MIDI recibida. Las fases están en [docs/ROADMAP.md](docs/ROADMAP.md).
+> **Estado: versión 0.9.0. Las 7 fases están implementadas y verificadas automáticamente** (tests, validadores, sanitizers, auditoría DSP e instaladores en el CI). Falta la validación manual en FL Studio y en otros DAWs: ver [docs/ROADMAP.md](docs/ROADMAP.md) y [docs/DAW_MATRIX.md](docs/DAW_MATRIX.md).
 
+![Metamorfo](docs/images/ui_link_cuantizar_bloqueo.png)
+
+- **Guía de usuario:** [docs/GUIA_USUARIO_es.md](docs/GUIA_USUARIO_es.md)
 - Especificación: [docs/SPEC.md](docs/SPEC.md)
 - Pruebas manuales en FL Studio: [docs/TESTING_FL.md](docs/TESTING_FL.md)
 - Instrucciones para Claude Code: [CLAUDE.md](CLAUDE.md)
@@ -42,9 +44,12 @@ Los plugins quedan en `build/release/Metamorfo_artefacts/Release/`, dentro de `V
 - Define la variable `CPM_SOURCE_CACHE` (por ejemplo `C:\cpm-cache`) para no volver a descargar las dependencias cada vez que borres `build/`.
 - Si prefieres Visual Studio, `cmake --preset vs` genera una solución.
 
-## Binarios del CI
+## Instaladores y binarios del CI
 
-Cada push compila en GitHub Actions. Los binarios se descargan desde la pestaña **Actions**, abriendo la ejecución y bajando a **Artifacts**.
+Cada push compila en GitHub Actions. Los binarios se descargan desde la pestaña **Actions**, abriendo la ejecución y bajando a **Artifacts**:
+- `Metamorfo-win-Installer`: instalador de Windows (VST3 y CLAP en `C:\Program Files\Common Files`, más la aplicación).
+- `Metamorfo-mac-Installer`: `.pkg` de macOS (VST3, AU y CLAP en `/Library/Audio/Plug-Ins`, más la aplicación).
+- Los binarios sueltos por formato.
 - En macOS los plugins tienen firma ad-hoc, sin notarizar. Después de descomprimir, quita la cuarentena:
 
 ```bash
@@ -55,7 +60,7 @@ xattr -dr com.apple.quarantine ~/Downloads/Metamorfo.vst3
 
 ## Uso previsto
 
-Metamorfo es para mezcla y producción. Por la ventana de análisis tendrá latencia (se reporta al host para que la compense), así que no está pensado para monitoreo en vivo sin latencia.
+Metamorfo es para mezcla y producción. Tiene una **latencia fija de 33,4 ms** (1603 muestras a 48 kHz), que se informa al host para que la compense. Por eso no está pensado para monitoreo en vivo sin latencia.
 
 ## Licencia
 

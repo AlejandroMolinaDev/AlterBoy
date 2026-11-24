@@ -30,6 +30,8 @@ ctest --preset release            # unit tests (Linux headless: xvfb-run -a ctes
   CI runs it with `--fail-on-x`; bump `--phase` in build.yml when a phase is closed.
 - Sanitizers (Linux/macOS): `cmake --preset asan|tsan`, build, `xvfb-run -a ctest --preset asan|tsan`
   (tsan: build target MetamorfoTests, run with `-E host_probe`). CI job `linux-sanitizers`.
+- Installers: `installer/windows/Metamorfo.iss` (Inno Setup 6, built + install-tested in CI),
+  `installer/macos/build_pkg.sh <artefacts> <version>` (pkgbuild, install-tested in CI).
 - Host probe: `MetamorfoHostProbe vst3|clap <path>` loads the BUILT binaries like a DAW
   (CTest `host_probe_vst3` / `host_probe_clap`; checks MIDI input bus / CLAP MIDI note port).
 
@@ -83,7 +85,8 @@ tests/screenshot/ MetamorfoScreenshot <dir>: editor PNGs for visual review (docs
 tests/host/       MetamorfoHostProbe: VST3 (JUCE hosting) + minimal CLAP host for the built binaries
 tools/analysis/   Python audit: signals.py (synthetic voice), metrics.py, run_audit.py
 tools/ci/         validation scripts used by CI
-docs/             SPEC, ROADMAP, TESTING_FL, TEST_REPORT (latest audit)
+installer/        Windows (Inno Setup) and macOS (pkg) installers
+docs/             SPEC, ROADMAP, TESTING_FL, TEST_REPORT, DAW_MATRIX, GUIA_USUARIO_es, images/
 ```
 - `metamorfo_core` is an INTERFACE library (sources + JUCE modules) linked by both the plugin and
   the tests, so tests run without any host.
@@ -98,7 +101,6 @@ docs/             SPEC, ROADMAP, TESTING_FL, TEST_REPORT (latest audit)
   because `acceptsMidi()` is true. `MidiPitchControl` = last-note-priority stack, fixed storage.
 - License: **AGPLv3** (`LICENSE.md`).
 
-## Validation status (audit 2026-11-23, see docs/TEST_REPORT.md)
-pluginval strictness 10: VST3 + AU pass (pluginval cannot load CLAP) · Steinberg validator 3.8.0: 47/47 ·
-clap-validator 0.3.2: 18 pass, 3 skipped (no preset-discovery, N/A) · auval aumf: pass (macOS CI) ·
-CTest 26/26 (24 Catch2 + 2 host probes) · ASan/UBSan/TSan clean · DSP audit: 0 ✘ (26 ⏸ later phases).
+## Validation status (2026-11-24, phase 7, see docs/TEST_REPORT.md)
+CTest 63/63 · DSP audit --phase 7: 77/77 · pluginval 10 (VST3+AU) pass · Steinberg 47/47 · clap-validator
+18/0/3 · auval pass · ASan/UBSan/TSan clean (CI) · CPU worst case ~1.3 % of a core @48k/128, 0 allocs.
