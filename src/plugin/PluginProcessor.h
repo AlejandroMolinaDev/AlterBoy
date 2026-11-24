@@ -10,6 +10,7 @@
 #include "dsp/MidiPitchControl.h"
 #include "dsp/PitchDetector.h"
 #include "dsp/PsolaEngine.h"
+#include "dsp/TubeDrive.h"
 
 namespace metamorfo
 {
@@ -78,7 +79,8 @@ public:
     // Human-readable plugin format ("VST3", "CLAP", "AU", "Standalone", ...).
     juce::String getFormatName() const;
 
-    // Total latency in samples (engine: 2 x the 60 Hz period). Fixed per sample rate.
+    // Total latency in samples: engine (2 x the 60 Hz period) + drive oversampling.
+    // Fixed per sample rate.
     int getEngineLatencySamples() const noexcept { return totalLatency_; }
 
     double getPreparedSampleRate() const noexcept { return preparedSampleRate_.load (std::memory_order_relaxed); }
@@ -107,6 +109,9 @@ private:
     int totalLatency_ = 0;
 
     juce::SmoothedValue<float> mixSmoothed_ { 1.0f };
+    juce::SmoothedValue<float> driveSmoothed_ { 0.0f };
+    std::array<dsp::TubeDrive, 2> drive_; // one per output channel, after the engine
+    int engineLatency_ = 0;
 
     // MIDI reaches the engine delayed by maxPeriod samples, the distance between the
     // input and the synthesis horizon, so pitch changes line up with the timeline.

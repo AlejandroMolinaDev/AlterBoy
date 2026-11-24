@@ -35,7 +35,10 @@ void MetamorfoProcessor::prepareEngine (double sampleRate, int maxBlock)
 {
     pitchDetector_.prepare (sampleRate);
     engine_.prepare (sampleRate, pitchDetector_.maxPeriodSamples());
-    totalLatency_ = engine_.latencySamples();
+    engineLatency_ = engine_.latencySamples();
+    totalLatency_ = engineLatency_ + dsp::TubeDrive::kLatency;
+    for (auto& d : drive_)
+        d.prepare (sampleRate);
 
     std::uint32_t size = 1;
     while (size < static_cast<std::uint32_t> (totalLatency_ + maxBlock + 1))
@@ -51,6 +54,8 @@ void MetamorfoProcessor::prepareEngine (double sampleRate, int maxBlock)
 
     mixSmoothed_.reset (sampleRate, 0.02);
     mixSmoothed_.setCurrentAndTargetValue (mixParam_->load() / 100.0f);
+    driveSmoothed_.reset (sampleRate, 0.03);
+    driveSmoothed_.setCurrentAndTargetValue (driveParam_->load());
 }
 
 void MetamorfoProcessor::prepareToPlay (double sampleRate, int maximumExpectedSamplesPerBlock)
@@ -234,6 +239,7 @@ void MetamorfoProcessor::renderSegment (juce::AudioBuffer<float>& buffer, int st
     const int numOut = std::min (getTotalNumOutputChannels(), 2);
     const auto controls = readControls (midiPitch_.advance (numSamples));
     mixSmoothed_.setTargetValue (mixParam_->load() / 100.0f);
+    driveSmoothed_.setTargetValue (driveParam_->load());
 
     float* out[2] = { buffer.getWritePointer (0, startSample),
                       numOut > 1 ? buffer.getWritePointer (1, startSample) : nullptr };
@@ -251,17 +257,23 @@ void MetamorfoProcessor::renderSegment (juce::AudioBuffer<float>& buffer, int st
         const float wet = engine_.processSample (mono, pitchDetector_, controls);
         const float identity = engine_.identityGain();
         const float mix = mixSmoothed_.getNextValue();
+        const float drive = driveSmoothed_.getNextValue();
 
-        // Dry path: each channel delayed by exactly the reported latency.
+        // Engine -> Drive -> Mix (SPEC §4). Two taps of the per-channel input delay:
+        // `engineTap` aligns with the engine output, `dryTap` with the final output.
         const float inputs[2] = { l, r };
-        const auto readIndex = (dryWrite_ - static_cast<std::uint32_t> (totalLatency_)) & dryMask_;
+        const auto engineTap = (dryWrite_ - static_cast<std::uint32_t> (engineLatency_)) & dryMask_;
+        const auto dryTap = (dryWrite_ - static_cast<std::uint32_t> (totalLatency_)) & dryMask_;
         for (int ch = 0; ch < numOut; ++ch)
         {
-            dryDelay_[static_cast<std::size_t> (ch)][dryWrite_] = inputs[ch];
-            const float dry = dryDelay_[static_cast<std::size_t> (ch)][readIndex];
-            // Neutral settings: the "wet" signal is the exactly delayed dry (bit-exact).
-            const float processed = identity >= 1.0f ? dry : identity * dry + (1.0f - identity) * wet;
-            out[ch][i] = dry + mix * (processed - dry);
+            auto& ring = dryDelay_[static_cast<std::size_t> (ch)];
+            ring[dryWrite_] = inputs[ch];
+            const float alignedInput = ring[engineTap];
+            const float dry = ring[dryTap];
+            // Neutral settings: the processed signal is the exactly delayed input (bit-exact).
+            const float processed = identity >= 1.0f ? alignedInput : identity * alignedInput + (1.0f - identity) * wet;
+            const float driven = drive_[static_cast<std::size_t> (ch)].process (processed, drive);
+            out[ch][i] = dry + mix * (driven - dry);
         }
         dryWrite_ = (dryWrite_ + 1) & dryMask_;
     }

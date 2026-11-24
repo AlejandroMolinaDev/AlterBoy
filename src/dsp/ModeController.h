@@ -29,7 +29,7 @@ public:
     // True when the settings leave the voice untouched (the engine can bypass exactly).
     static bool isIdentity (const Settings& s) noexcept
     {
-        return s.mode == Mode::transpose && s.midiNote < 0.0f && s.knobSemitones == 0.0f;
+        return s.mode == Mode::transpose && s.midiNote < 0.0f && std::fpclassify (s.knobSemitones) == FP_ZERO;
     }
 
     // Transposition in semitones requested by the knob or by MIDI (relative to the reference).

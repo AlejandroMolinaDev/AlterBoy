@@ -71,7 +71,7 @@ jobs:
           python3 -m venv .venv-audit
           .venv-audit/bin/pip install --quiet -r tools/analysis/requirements.txt
           .venv-audit/bin/python tools/analysis/run_audit.py \
-            --render build/release/tests/MetamorfoRender --out tests/render/output --phase 4 --fail-on-x
+            --render build/release/tests/MetamorfoRender --out tests/render/output --phase 5 --fail-on-x
 
       - name: Upload DSP audit table
         if: runner.os == 'macOS' && always()

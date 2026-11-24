@@ -10,7 +10,8 @@ add_executable(MetamorfoTests
   unit/LatencyTests.cpp
   unit/PitchDetectorTests.cpp
   unit/EngineTests.cpp
-  unit/ModesTests.cpp)
+  unit/ModesTests.cpp
+  unit/DriveTests.cpp)
 
 target_compile_definitions(MetamorfoTests PRIVATE
   JUCE_STANDALONE_APPLICATION=1)

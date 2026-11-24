@@ -214,8 +214,8 @@ int runClapProbe (const std::string& path)
     std::uint32_t latency = 0;
     if (const auto* lat = static_cast<const clap_plugin_latency_t*> (plugin->get_extension (plugin, CLAP_EXT_LATENCY)))
         latency = lat->get (plugin);
-    check (latency == 2 * static_cast<std::uint32_t> (std::ceil (48000.0 / 60.0)),
-           "clap.latency = 2 x 60 Hz period (" + std::to_string (latency) + " samples)");
+    check (latency == 2 * static_cast<std::uint32_t> (std::ceil (48000.0 / 60.0)) + 3u /* drive oversampling */,
+           "clap.latency = 2 x 60 Hz period + 3 (" + std::to_string (latency) + " samples)");
 
     const auto inputL = [] (std::int64_t n) { return n < 0 ? 0.0f : 0.4f * std::sin (0.02f * static_cast<float> (n)); };
     const auto inputR = [] (std::int64_t n) { return n < 0 ? 0.0f : 0.3f * std::sin (0.03f * static_cast<float> (n)); };

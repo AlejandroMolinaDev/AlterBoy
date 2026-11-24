@@ -66,8 +66,8 @@ int runVst3Probe (const std::string& path)
     instance->setRateAndBufferSizeDetails (48000.0, 512);
     instance->prepareToPlay (48000.0, 512);
     const int latency = instance->getLatencySamples();
-    check (latency == 2 * static_cast<int> (std::ceil (48000.0 / 60.0)),
-           "reported latency = 2 x 60 Hz period (" + std::to_string (latency) + " samples)");
+    check (latency == 2 * static_cast<int> (std::ceil (48000.0 / 60.0)) + 3 /* drive oversampling */,
+           "reported latency = 2 x 60 Hz period + 3 (" + std::to_string (latency) + " samples)");
 
     // Process audio + MIDI through the real binary; output must equal input (passthrough).
     juce::AudioBuffer<float> buffer (2, 512);

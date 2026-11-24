@@ -225,7 +225,7 @@ float PsolaEngine::processSample (float input, const PitchDetector& detector, co
     generateSynthesisMarks (controls);
 
     // Identity cross-fade target: exact transparency for neutral settings.
-    const bool identity = ModeController::isIdentity (controls.mode) && controls.formantSemitones == 0.0f;
+    const bool identity = ModeController::isIdentity (controls.mode) && std::fpclassify (controls.formantSemitones) == FP_ZERO;
     identityGain_ = identity ? std::min (1.0f, identityGain_ + identityStep_)
                              : std::max (0.0f, identityGain_ - identityStep_);
 

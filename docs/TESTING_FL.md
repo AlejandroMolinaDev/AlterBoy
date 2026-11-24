@@ -165,3 +165,12 @@ En la Fase 1 la UI todavía no tiene el selector de modo, y Robot aún no cambia
    2. Mantén Sol4. ✅ La voz sube una quinta.
    3. Suelta. ✅ Vuelve al valor de la perilla Pitch.
 5. **Portamento:** pon **Portamento** en 150 ms y toca notas ligadas en Robot. ✅ La voz se desliza entre las notas.
+
+---
+
+## Fase 5: Drive
+
+1. Sube **Drive** a 3, 6 y 12 con la voz sonando.
+2. ✅ Aparece calidez y saturación de válvula, más "carácter" pero **sin un salto de volumen** (la compensación lo mantiene a ±1,5 dB).
+3. Con Drive en 0, el sonido es idéntico al original.
+4. Con Pitch en +12 y Drive en 8, la saturación se aplica a la voz procesada.

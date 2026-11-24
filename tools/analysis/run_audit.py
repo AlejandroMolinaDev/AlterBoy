@@ -201,9 +201,10 @@ class Audit:
     def drive(self):
         sr = 48000
         x = s.sine(220.0, 2.0, sr, amp=0.25)
-        y0, _ = self.render(x, sr, {"drive": 0})
-        self.add("Drive", "DRIVE 0 transparente (null vs entrada)", f"{m.null_db(x, y0):.1f} dBFS",
-                 "< −90 dBFS", m.null_db(x, y0) < -90, "drive")
+        y0, rep0 = self.render(x, sr, {"drive": 0})
+        n0 = m.null_db(x, y0, rep0["reported_latency_samples"])
+        self.add("Drive", "DRIVE 0 transparente (null vs entrada alineada por latencia)",
+                 f"{n0:.1f} dBFS" if math.isfinite(n0) else "−∞ (null perfecto)", "< −90 dBFS", n0 < -90, "drive")
         base_rms = m.rms_db(m.steady(y0[:, 0], sr))
         for d in (6, 12):
             y, _ = self.render(x, sr, {"drive": d})
@@ -308,7 +309,7 @@ class Audit:
         pct = rep["cpu_percent_of_core"]
         self.add("CPU", f"1 instancia, 48 kHz, buffer 128 ({rep['audio_seconds']:.0f} s de audio)",
                  f"{pct:.3f} % de un núcleo", "< 2 %", pct < 2.0, "cpu",
-                 "contenedor Linux; sin motor DSP todavía (se re-mide en Fases 2–5)")
+                 "contenedor Linux, motor completo (detector + PSOLA + drive)")
         _, rep = self.render(phrase, sr, {"pitch": 7}, block=16, repeat=20)
         self.add("CPU", "1 instancia, 48 kHz, buffer 16 (peor caso de overhead)",
                  f"{rep['cpu_percent_of_core']:.3f} % de un núcleo", "< 2 %", rep["cpu_percent_of_core"] < 2.0, "cpu")

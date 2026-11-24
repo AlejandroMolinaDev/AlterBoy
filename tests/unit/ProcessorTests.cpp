@@ -97,13 +97,13 @@ TEST_CASE ("Processor passthrough is bit-exact", "[processor]")
     SECTION ("huge prepared block") { checkPassthrough (Set::stereo(), Set::stereo(), 4096, blocks); }
 }
 
-TEST_CASE ("Processor reports a fixed latency of two 60 Hz periods", "[processor][latency]")
+TEST_CASE ("Processor reports a fixed latency: two 60 Hz periods + drive oversampling", "[processor][latency]")
 {
     for (const double rate : { 44100.0, 48000.0, 96000.0, 192000.0 })
     {
         MetamorfoProcessor p;
         prepare (p, Set::stereo(), Set::stereo(), 256, rate);
-        const int expected = 2 * static_cast<int> (std::ceil (rate / 60.0));
+        const int expected = 2 * static_cast<int> (std::ceil (rate / 60.0)) + metamorfo::dsp::TubeDrive::kLatency;
         CHECK (p.getLatencySamples() == expected);
         CHECK (p.getLatencySamples() == p.getEngineLatencySamples());
         CHECK (1000.0 * p.getLatencySamples() / rate < 34.0); // 33.3 ms (SPEC §4.5 cap: 60 ms)
