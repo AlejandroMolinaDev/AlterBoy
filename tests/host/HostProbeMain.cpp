@@ -65,7 +65,9 @@ int runVst3Probe (const std::string& path)
     check (instance->setBusesLayout (layout (Set::stereo(), Set::stereo())), "set stereo layout");
     instance->setRateAndBufferSizeDetails (48000.0, 512);
     instance->prepareToPlay (48000.0, 512);
-    check (instance->getLatencySamples() == 0, "reported latency 0 (phase 1)");
+    const int latency = instance->getLatencySamples();
+    check (latency == 2 * static_cast<int> (std::ceil (48000.0 / 60.0)),
+           "reported latency = 2 x 60 Hz period (" + std::to_string (latency) + " samples)");
 
     // Process audio + MIDI through the real binary; output must equal input (passthrough).
     juce::AudioBuffer<float> buffer (2, 512);
@@ -86,13 +88,15 @@ int runVst3Probe (const std::string& path)
         for (int ch = 0; ch < 2; ++ch)
             for (int i = 0; i < 512; ++i)
             {
+                // Neutral settings: input delayed by the reported latency.
                 const float y = buffer.getSample (ch, i);
+                const int n = block * 512 + i - latency;
                 finite &= std::isfinite (y);
-                maxError = std::max (maxError, std::abs (y - signal (ch, block * 512 + i)));
+                maxError = std::max (maxError, std::abs (y - (n >= 0 ? signal (ch, n) : 0.0f)));
             }
     }
     check (finite, "processing with MIDI produces finite output");
-    check (maxError < 1.0e-6f, "passthrough through the binary (max error " + std::to_string (maxError) + ")");
+    check (maxError < 1.0e-6f, "neutral settings = delayed input through the binary (max error " + std::to_string (maxError) + ")");
 
     // State round trip through the host interface.
     auto* firstParam = instance->getParameters()[0];

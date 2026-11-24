@@ -210,14 +210,24 @@ int runClapProbe (const std::string& path)
     outBuffer.channel_count = 2;
     clap_output_events_t outEvents { nullptr, outputTryPush };
 
+    // Reported latency (clap.latency) must be the fixed engine latency.
+    std::uint32_t latency = 0;
+    if (const auto* lat = static_cast<const clap_plugin_latency_t*> (plugin->get_extension (plugin, CLAP_EXT_LATENCY)))
+        latency = lat->get (plugin);
+    check (latency == 2 * static_cast<std::uint32_t> (std::ceil (48000.0 / 60.0)),
+           "clap.latency = 2 x 60 Hz period (" + std::to_string (latency) + " samples)");
+
+    const auto inputL = [] (std::int64_t n) { return n < 0 ? 0.0f : 0.4f * std::sin (0.02f * static_cast<float> (n)); };
+    const auto inputR = [] (std::int64_t n) { return n < 0 ? 0.0f : 0.3f * std::sin (0.03f * static_cast<float> (n)); };
+
     bool processedOk = true;
     float maxError = 0.0f;
     for (int block = 0; block < 50; ++block)
     {
         for (std::uint32_t i = 0; i < frames; ++i)
         {
-            inL[i] = 0.4f * std::sin (0.02f * static_cast<float> (block * frames + i));
-            inR[i] = 0.3f * std::sin (0.03f * static_cast<float> (block * frames + i));
+            inL[i] = inputL (static_cast<std::int64_t> (block) * frames + i);
+            inR[i] = inputR (static_cast<std::int64_t> (block) * frames + i);
         }
         InputEvents events;
         if (block % 10 == 0) events.add (noteEvent (CLAP_EVENT_NOTE_ON, 10, static_cast<std::int16_t> (60 + block / 10), 0.8));
@@ -236,11 +246,15 @@ int runClapProbe (const std::string& path)
         process.out_events = &outEvents;
 
         processedOk &= plugin->process (plugin, &process) != CLAP_PROCESS_ERROR;
+        // Neutral settings: output = input delayed by the reported latency.
         for (std::uint32_t i = 0; i < frames; ++i)
-            maxError = std::max ({ maxError, std::abs (outL[i] - inL[i]), std::abs (outR[i] - inR[i]) });
+        {
+            const auto n = static_cast<std::int64_t> (block) * frames + i - latency;
+            maxError = std::max ({ maxError, std::abs (outL[i] - inputL (n)), std::abs (outR[i] - inputR (n)) });
+        }
     }
     check (processedOk, "process() with note + MIDI events never returns an error");
-    check (maxError < 1.0e-6f, "passthrough through the binary (max error " + std::to_string (maxError) + ")");
+    check (maxError < 1.0e-6f, "neutral settings = delayed input through the binary (max error " + std::to_string (maxError) + ")");
 
     plugin->stop_processing (plugin);
     plugin->deactivate (plugin);
