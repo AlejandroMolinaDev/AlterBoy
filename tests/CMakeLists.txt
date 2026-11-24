@@ -11,7 +11,8 @@ add_executable(MetamorfoTests
   unit/PitchDetectorTests.cpp
   unit/EngineTests.cpp
   unit/ModesTests.cpp
-  unit/DriveTests.cpp)
+  unit/DriveTests.cpp
+  unit/PresetTests.cpp)
 
 target_compile_definitions(MetamorfoTests PRIVATE
   JUCE_STANDALONE_APPLICATION=1)
@@ -60,3 +61,8 @@ else()
   set(metamorfo_clap_path "$<TARGET_FILE:Metamorfo_CLAP>")
 endif()
 add_test(NAME host_probe_clap COMMAND MetamorfoHostProbe clap "${metamorfo_clap_path}")
+
+# Editor screenshots for visual review (not a test).
+add_executable(MetamorfoScreenshot screenshot/ScreenshotMain.cpp)
+target_compile_definitions(MetamorfoScreenshot PRIVATE JUCE_STANDALONE_APPLICATION=1)
+target_link_libraries(MetamorfoScreenshot PRIVATE metamorfo_core juce::juce_recommended_config_flags)

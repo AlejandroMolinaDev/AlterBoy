@@ -11,7 +11,7 @@ La especificación completa está en [SPEC.md](SPEC.md). Este archivo lleva el e
 | 3. Motor de tono y formantes | ✅ Implementada (2026-11-24) · ⏳ falta tu escucha en FL | TD-PSOLA, formante por re-muestreo de granos, Link, Transponer, Mix alineado, latencia fija de 33,3 ms |
 | 4. Cuantizar, Robot y MIDI | ✅ Implementada (2026-11-24) · ⏳ falta tu prueba en FL | Cuantizar (hard-tune con histéresis), Robot (MIDI 72 o nota MIDI), MIDI en los 3 modos con precisión de muestra, portamento de 0 a 200 ms |
 | 5. Drive | ✅ Implementada (2026-11-24) · ⏳ falta tu escucha | Tríodo asimétrico con polarización dinámica, 2× IIR halfband, compensación de nivel adaptativa |
-| 6. UI final + presets | Pendiente | Diseño del §8, presets, bloqueos, ayuda MIDI |
+| 6. UI final + presets | ✅ Implementada (2026-11-24) · ⏳ falta tu revisión visual | Diseño del §8 (capturas en `docs/images/`), 17 presets de fábrica, presets de usuario, A/B, bloqueos, escala del 75 al 200 %, ayuda MIDI |
 | 7. Multi-DAW + distribución | Pendiente | DAW_MATRIX, instaladores, guía de usuario |
 
 ## Pendiente para aceptar la Fase 1
@@ -30,8 +30,9 @@ La especificación completa está en [SPEC.md](SPEC.md). Este archivo lleva el e
 - **Fase 3 (pendiente):** plan B si ±12 st no queda utilizable en voz real (phase vocoder con preservación de envolvente). Las pruebas objetivas pasan (±12 st con 0,1 ¢); la valoración de oído está pendiente de tu prueba en FL.
 - ~~**Fase 4:** MIDI con precisión de muestra~~ → hecho (cola sin locks, ver Decisiones).
 - **Fase 4:** evaluar `CLAP_PROCESS_EVENTS_RESOLUTION_SAMPLES` para automatización precisa en CLAP.
-- **Fase 6:** probar el escalado DPI en FL Studio en Windows. Desde JUCE 8.0.13 hay reportes de cambios en la conciencia de DPI del proceso host.
-- **Fase 6:** comprobar que `getProgramName` y el sistema de presets propio no chocan con los presets nativos de FL.
+- **Fase 6 (pendiente manual):** probar el escalado DPI en FL Studio en Windows. Desde JUCE 8.0.13 hay reportes de cambios en la conciencia de DPI del proceso host. La UI se dibuja en vectores con una transformación de escala, así que debería verse nítida.
+- **Fase 6 (pendiente manual):** comprobar en FL que los presets nativos de FL (guardan el estado completo) y los presets propios conviven. En código, el estado del proyecto incluye parámetros, bloqueos y el nombre del preset.
+- **Fase 6 (pendiente):** tu aprobación visual. Capturas: `docs/images/ui_default.png` y `docs/images/ui_link_cuantizar_bloqueo.png`.
 - **Auditoría de pruebas (2026-11-23, [TEST_REPORT.md](TEST_REPORT.md)):** brechas G1 a G7 por resolver en sus fases:
   - **G1 (Fases 2 a 6):** portar cada prueba DSP del SPEC §7 a Catch2, con un generador de voz en C++. *Hecho el 2026-11-24:* el CI de macOS ya corre `run_audit.py --phase 1 --fail-on-x`. **Subir `--phase` en `build.yml` al cerrar cada fase.**
   - **G2 (Fase 3):** infraestructura de suavizado: punteros atómicos cacheados + `juce::SmoothedValue`.
@@ -75,6 +76,10 @@ No hay ninguna otra excepción. pluginval (nivel 10, VST3 y AU), auval y el vali
 | Auditoría | Parámetros con pasos decimales exactos (`steppedRange`) | En arm64, el ajuste por pasos de JUCE dejaba residuos (0 → 1.79e-7). Es el bug B2. |
 | Auditoría | El sanitizador también elimina los denormales | Venían desde la entrada y pasaban a la salida (B4). |
 | Auditoría | Headers de CLAP marcados `SYSTEM` | Sus warnings (más de 500 en clang) tapaban los nuestros (B6). |
+| Fase 6 | UI: lienzo base de 780 × 260 escalado con una transformación (75 a 200 %, 150 % por defecto, guardado en `Metamorfo.settings` del usuario), con aspecto 3:1 fijo y redimensionable | Nítida en HiDPI (vectorial), una sola fila |
+| Fase 6 | Estética propia: panel verde oliva con grano de pintura en polvo (ruido de semilla fija), tornillos, serigrafía hueso en Barlow Condensed (OFL), display de fósforo en Share Tech Mono (OFL), perillas crema lisas con tapa negra, palanca de 3 posiciones con LEDs, rojo solo para bloqueos | SPEC §8; nada imita al producto de referencia |
+| Fase 6 | Presets como valores planos (`*.mtmfpreset`, XML) en `Documentos/Metamorfo/Presets/<categoría>/`; la nota de referencia MIDI no se guarda en presets (es un ajuste del estudio); los bloqueos y el nombre del preset viajan en el estado del proyecto | Bloqueos respetados al cargar presets y al alternar A/B |
+| Fase 6 | Nombres de tests de Catch2 solo en ASCII | En Windows, CTest pasa el filtro con otra codificación: un "§" hacía que no se encontrara el test (fallo del CI de la Fase 5) |
 | Fase 5 | Sobremuestreo 2× propio: halfband IIR polifásico de 8 secciones paso todo (diseño elíptico Valenzuela-Constantinides, banda de transición 0,04), verificado en Python: −99 dB de rechazo e imágenes por debajo de −105 dB. Latencia de 3 muestras, sumada a la reportada | SPEC §4.3: "2× IIR, latencia mínima incluida". Sin dependencias y sin JUCE en `src/dsp` |
 | Fase 5 | Tríodo: pre-énfasis de +3 dB a 1,5 kHz, ganancia de 0 a +30 dB, curva asimétrica (tanh / tanh(0,45·z)/0,45) con polarización 0,2 + 0,5·envolvente (5 ms / 80 ms), de-énfasis, bloqueo de DC, compensación adaptativa de RMS (200 ms) | Búsqueda en rejilla en Python: H2 supera a H3 en al menos 15 dB de −24 a −3 dBFS. Nivel ±1,5 dB en los tests |
 | Fase 5 | Drive por canal sobre la señal procesada (motor → drive → mix). Con Drive = 0, bypass bit-exacto (retardo de 3 muestras) y sin costo de CPU; al activarse entra en un fundido sobre el primer medio paso | SPEC §4: cadena de señal. Transparencia y CPU |

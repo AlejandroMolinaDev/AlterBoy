@@ -22,6 +22,15 @@ add_library(metamorfo_dsp STATIC
 target_include_directories(metamorfo_dsp PUBLIC src)
 target_link_libraries(metamorfo_dsp PRIVATE metamorfo_warnings)
 
+# Embedded resources (OFL fonts, see THIRD_PARTY_LICENSES.md).
+juce_add_binary_data(metamorfo_resources
+  NAMESPACE MetamorfoBinary
+  HEADER_NAME MetamorfoBinary.h
+  SOURCES
+    resources/fonts/BarlowCondensed-SemiBold.ttf
+    resources/fonts/BarlowCondensed-Medium.ttf
+    resources/fonts/ShareTechMono-Regular.ttf)
+
 # ---------------------------------------------------------------------------
 # metamorfo_core: plugin sources + JUCE modules. INTERFACE so that both the
 # plugin and the test executable compile their own copy of JUCE.
@@ -30,7 +39,12 @@ add_library(metamorfo_core INTERFACE)
 target_sources(metamorfo_core INTERFACE
   ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/Parameters.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/PluginProcessor.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/PluginEditor.cpp)
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/plugin/PresetManager.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/PluginEditor.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/MetamorfoLookAndFeel.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/Knob.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/ToggleLever3.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/components/PresetBar.cpp)
 target_include_directories(metamorfo_core INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(metamorfo_core INTERFACE
   METAMORFO_VERSION_STRING="${PROJECT_VERSION}"
@@ -42,6 +56,7 @@ target_compile_definitions(metamorfo_core INTERFACE
 target_compile_options(metamorfo_core INTERFACE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
 target_link_libraries(metamorfo_core INTERFACE
   metamorfo_dsp
+  metamorfo_resources
   clap_juce_extensions
   juce::juce_audio_utils
   juce::juce_audio_processors

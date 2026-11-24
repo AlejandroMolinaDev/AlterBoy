@@ -13,7 +13,7 @@ constexpr float kQuantize = 1.0f, kRobot = 2.0f;
 double f0Between (const Rendered& r, double from, double to) { return medianF0 (r.out, from, to); }
 } // namespace
 
-TEST_CASE ("Quantize: detuned input lands on the nearest semitone (SPEC §7)", "[modes][quantize]")
+TEST_CASE ("Quantize: detuned input lands on the nearest semitone (SPEC 7)", "[modes][quantize]")
 {
     for (const double detune : { 35.0, -40.0, 20.0, -15.0 })
     {
@@ -40,7 +40,7 @@ TEST_CASE ("Quantize then transpose with PITCH", "[modes][quantize]")
     CHECK (std::abs (centsBetween (medianF0 (r.out), midiToHz (60.0))) < 5.0);
 }
 
-TEST_CASE ("Robot: PITCH 0 sings MIDI 72, PITCH moves in whole semitones (SPEC §7)", "[modes][robot]")
+TEST_CASE ("Robot: PITCH 0 sings MIDI 72, PITCH moves in whole semitones (SPEC 7)", "[modes][robot]")
 {
     const auto voice = syntheticVoice (180.0, 1.5, kRate, 40.0);
     {
@@ -53,7 +53,7 @@ TEST_CASE ("Robot: PITCH 0 sings MIDI 72, PITCH moves in whole semitones (SPEC �
     }
 }
 
-TEST_CASE ("Robot: the output follows the received MIDI notes (SPEC §7)", "[modes][robot][midi]")
+TEST_CASE ("Robot: the output follows the received MIDI notes (SPEC 7)", "[modes][robot][midi]")
 {
     const auto voice = syntheticVoice (200.0, 2.4, kRate, 30.0);
     const std::vector<Note> melody { { 0.0, 0.8, 64 }, { 0.8, 0.8, 67 }, { 1.6, 0.8, 55 } };

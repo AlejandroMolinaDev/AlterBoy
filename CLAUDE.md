@@ -46,6 +46,7 @@ ctest --preset release            # unit tests (Linux headless: xvfb-run -a ctes
 - Smoothed parameters (no zipper noise). Latency is fixed per sample rate and always reported
   with `setLatencySamples()` in `prepareToPlay`; the dry path is delayed by the same amount.
 - UI reads audio state only through atomics; closing the editor never affects audio.
+- Catch2 test names must be ASCII-only (CTest on Windows mangles non-ASCII filters).
 - Tests that delete an editor must call `processor.editorBeingDeleted (editor)` first (JUCE 9 host
   protocol). Test threads must be joined via RAII (`StopAndJoin`), never after a REQUIRE.
 - **Legal (SPEC §1):** no third-party product/brand names in code, UI, presets or user docs.
@@ -73,10 +74,12 @@ src/dsp/          JUCE-free RT DSP (static lib metamorfo_dsp, strict warnings): 
                   (decimated YIN + full-rate refinement), VoicingDetector, ModeController,
                   PsolaEngine (TD-PSOLA, formant = grain resampling, Link), TubeDrive (+HalfBand2x),
                   MidiPitchControl (note stack + portamento)
-src/plugin/       PluginProcessor, Parameters
-src/ui/           PluginEditor
+src/plugin/       PluginProcessor, Parameters, PresetManager (factory/user presets, A/B), ParameterLocks
+src/ui/           PluginEditor (780x260 base canvas, scaled 75-200 %), MetamorfoLookAndFeel,
+                  components/ Knob, ToggleLever3, PresetBar + MidiHelpScreen; fonts in resources/fonts (OFL)
 tests/unit/       Catch2 tests (own copy of JUCE + core, custom main with ScopedJuceInitialiser_GUI)
 tests/render/     MetamorfoRender: offline host (WAV in/out, params, MIDI, JSON report, alloc probe)
+tests/screenshot/ MetamorfoScreenshot <dir>: editor PNGs for visual review (docs/images)
 tests/host/       MetamorfoHostProbe: VST3 (JUCE hosting) + minimal CLAP host for the built binaries
 tools/analysis/   Python audit: signals.py (synthetic voice), metrics.py, run_audit.py
 tools/ci/         validation scripts used by CI

@@ -10,6 +10,8 @@ Metamorfo se distribuye bajo **GNU AGPLv3** ([LICENSE.md](LICENSE.md)). Todo com
 | [clap-juce-extensions](https://github.com/free-audio/clap-juce-extensions) | commit `3837f4a` | MIT | Wrapper CLAP para JUCE |
 | [CLAP](https://github.com/free-audio/clap) | 1.2.10 (submódulo de clap-juce-extensions) | MIT | API del formato CLAP |
 | [clap-helpers](https://github.com/free-audio/clap-helpers) | submódulo de clap-juce-extensions | MIT | Utilidades CLAP |
+| [Barlow Condensed](https://github.com/jpt/barlow) (SemiBold, Medium) | 2017 | SIL OFL 1.1 (`resources/fonts/OFL-BarlowCondensed.txt`) | Serigrafía de la UI (embebida) |
+| [Share Tech Mono](https://fonts.google.com/specimen/Share+Tech+Mono) | 2012 | SIL OFL 1.1 (`resources/fonts/OFL-ShareTechMono.txt`), nombre reservado "Share" (la fuente se usa sin modificar) | Display de notas (embebida) |
 | VST3 SDK (incluido en JUCE) | el que trae JUCE 9.0.6 | MIT (VST 3 SDK 3.8+) | Formato VST3 |
 
 ## Solo para compilar y probar (no se distribuyen)
@@ -24,5 +26,4 @@ Metamorfo se distribuye bajo **GNU AGPLv3** ([LICENSE.md](LICENSE.md)). Todo com
 
 ## Notas
 
-- Las fuentes tipográficas (Fase 6) tendrán licencia OFL y se agregarán aquí.
 - "VST" es una marca de Steinberg Media Technologies GmbH. "Audio Units" es una marca de Apple Inc. Ambas se usan solo para nombrar los formatos.

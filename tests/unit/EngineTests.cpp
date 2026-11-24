@@ -19,7 +19,7 @@ using namespace metamorfo::test;
 namespace id = metamorfo::params::id;
 
 
-TEST_CASE ("Transpose: +7 st on a sine (SPEC §7)", "[engine][transpose]")
+TEST_CASE ("Transpose: +7 st on a sine (SPEC 7)", "[engine][transpose]")
 {
     const auto r = render (sine (220.0, 1.5, kRate), { { id::pitch, 7.0f } });
     const double expected = 220.0 * std::pow (2.0, 7.0 / 12.0);
@@ -41,7 +41,7 @@ TEST_CASE ("Transpose: synthetic voice +-1, +-7, +-12 st", "[engine][transpose]"
     }
 }
 
-TEST_CASE ("Formant +-6 with pitch 0: f0 unchanged, centroid moves (SPEC §7)", "[engine][formant]")
+TEST_CASE ("Formant +-6 with pitch 0: f0 unchanged, centroid moves (SPEC 7)", "[engine][formant]")
 {
     const auto voice = syntheticVoice (220.0, 1.5, kRate);
     const double base = centroid (render (voice, {}).out);
@@ -70,7 +70,7 @@ TEST_CASE ("Subtle formant -2 keeps pitch and lowers the centroid slightly", "[e
     CHECK (c > base * 0.80); // subtle, not a different voice
 }
 
-TEST_CASE ("Link: formant follows pitch (SPEC §7)", "[engine][link]")
+TEST_CASE ("Link: formant follows pitch (SPEC 7)", "[engine][link]")
 {
     const auto voice = syntheticVoice (220.0, 1.5, kRate);
     const double base = centroid (render (voice, {}).out);
@@ -88,7 +88,7 @@ TEST_CASE ("Link: formant follows pitch (SPEC §7)", "[engine][link]")
     CHECK (cOn > 1.15);                   // formants shifted with the pitch (~ x1.33)
 }
 
-TEST_CASE ("Mix 0 % is a perfect null against the delayed input (SPEC §7)", "[engine][mix]")
+TEST_CASE ("Mix 0 % is a perfect null against the delayed input (SPEC 7)", "[engine][mix]")
 {
     const auto voice = syntheticVoice (180.0, 1.0, kRate, 30.0);
     const auto r = render (voice, { { id::pitch, 7.0f }, { id::formant, -3.0f }, { id::mix, 0.0f } });
@@ -97,7 +97,7 @@ TEST_CASE ("Mix 0 % is a perfect null against the delayed input (SPEC §7)", "[e
         REQUIRE (r.out[i] == voice[i]);
 }
 
-TEST_CASE ("Voiced / unvoiced transitions without clicks (SPEC §7)", "[engine][voicing]")
+TEST_CASE ("Voiced / unvoiced transitions without clicks (SPEC 7)", "[engine][voicing]")
 {
     // voice - silence - noise ("breath") - voice, with fades like real phrases.
     std::vector<float> x;

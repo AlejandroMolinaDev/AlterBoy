@@ -11,6 +11,8 @@
 #include "dsp/PitchDetector.h"
 #include "dsp/PsolaEngine.h"
 #include "dsp/TubeDrive.h"
+#include "plugin/ParameterLocks.h"
+#include "plugin/PresetManager.h"
 
 namespace metamorfo
 {
@@ -73,6 +75,8 @@ public:
 
     // Metamorfo --------------------------------------------------------------
     juce::AudioProcessorValueTreeState& getParameters() noexcept { return parameters_; }
+    ParameterLocks& getLocks() noexcept { return locks_; }
+    PresetManager& getPresets() noexcept { return presets_; }
     const MidiActivity& getMidiActivity() const noexcept { return midiActivity_; }
     const AnalysisDisplay& getAnalysisDisplay() const noexcept { return analysisDisplay_; }
 
@@ -96,6 +100,8 @@ private:
     [[nodiscard]] dsp::PsolaEngine::Controls readControls (float midiNote) const noexcept;
 
     juce::AudioProcessorValueTreeState parameters_;
+    ParameterLocks locks_ { parameters_ };
+    PresetManager presets_ { parameters_, locks_ };
     dsp::MidiPitchControl midiPitch_;    // drives the engine (events delayed to the synthesis horizon)
     dsp::MidiPitchControl displayNotes_; // what the display shows (events applied on reception)
     MidiActivity midiActivity_;

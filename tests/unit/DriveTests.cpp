@@ -37,7 +37,7 @@ double rmsDb (const std::vector<float>& x, double from = 0.5)
 }
 } // namespace
 
-TEST_CASE ("Drive: H2 > H3 across levels and settings (SPEC §7)", "[drive]")
+TEST_CASE ("Drive: H2 > H3 across levels and settings (SPEC 7)", "[drive]")
 {
     for (const float level : { 0.06f, 0.25f, 0.5f })
         for (const float drive : { 3.0f, 6.0f, 9.0f, 12.0f })
@@ -50,7 +50,7 @@ TEST_CASE ("Drive: H2 > H3 across levels and settings (SPEC §7)", "[drive]")
         }
 }
 
-TEST_CASE ("Drive: level compensation within +-1.5 dB (SPEC §4.3)", "[drive]")
+TEST_CASE ("Drive: level compensation within +-1.5 dB (SPEC 4.3)", "[drive]")
 {
     for (const float level : { 0.06f, 0.25f, 0.5f })
     {

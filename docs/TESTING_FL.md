@@ -174,3 +174,44 @@ En la Fase 1 la UI todavía no tiene el selector de modo, y Robot aún no cambia
 2. ✅ Aparece calidez y saturación de válvula, más "carácter" pero **sin un salto de volumen** (la compensación lo mantiene a ±1,5 dB).
 3. Con Drive en 0, el sonido es idéntico al original.
 4. Con Pitch en +12 y Drive en 8, la saturación se aplica a la voz procesada.
+
+---
+
+## Fase 6: interfaz final y presets
+
+Capturas de referencia: `docs/images/ui_default.png` y `docs/images/ui_link_cuantizar_bloqueo.png`.
+
+1. **Vista general:**
+   - Una sola fila: PITCH / LINK / FORMANT, logo, palanca de modo con LEDs, display, DRIVE / MIX.
+   - Tooltips al pasar el mouse por cada control.
+2. **Perillas:**
+   - Doble clic vuelve al valor por defecto.
+   - **Shift + arrastrar** da ajuste fino (en Mac, **Cmd**).
+   - La rueda del mouse ajusta.
+   - Clic en una marca de la escala salta a ese valor.
+   - Clic en el nombre muestra el valor exacto.
+   - Clic derecho → *Escribir valor…*.
+3. **Bloqueos:**
+   1. Clic derecho en MIX → *Bloquear*. La etiqueta se pone roja con un candado.
+   2. Carga varios presets. ✅ MIX no cambia.
+4. **LINK:** al activarlo se enciende el LED cian, aparece la línea entre las perillas y FORMANT pasa a mostrar "FORMANT = PITCH".
+5. **Palanca de modo:** clic en TRANSPONER / CUANTIZAR / ROBOT o arrastra la palanca. El LED correspondiente se enciende.
+6. **Presets:**
+   - ◀ ▶ recorren los presets.
+   - El nombre abre el menú por categorías: Coros, Hard-tune, Robot, Personajes y Color.
+   - **GUARDAR** crea un preset de usuario en `Documentos/Metamorfo/Presets/`.
+7. **A/B:**
+   1. Ajusta algo y pulsa **A** (pasa a B). Cambia los ajustes.
+   2. Alterna con el botón para comparar.
+   3. **A→B** copia el ajuste activo al otro slot.
+8. **Escala:**
+   - El botón "150 %" ofrece 75 a 200 %. También puedes arrastrar la esquina inferior derecha.
+   - Cierra y vuelve a abrir el plugin. ✅ Recuerda el tamaño.
+   - **En Windows, revisa que la interfaz se vea nítida con el escalado de pantalla de Windows al 125 % y al 150 %.**
+9. **Ayuda MIDI:** *OPCIONES → Control por MIDI en mi DAW* muestra los pasos, con FL Studio primero.
+10. **Ajustes:**
+    - *OPCIONES → Nota de referencia MIDI* y *Portamento*.
+    - El display muestra `REF` y `PORT`.
+11. **Persistencia:**
+    1. Guarda el `.flp` con bloqueos, LINK y un preset de usuario cargado.
+    2. Ciérralo y vuelve a abrirlo. ✅ Se conserva todo.

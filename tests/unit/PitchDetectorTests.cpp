@@ -58,7 +58,7 @@ Run analyse (const std::vector<float>& x, double sr, double expected = 0.0, doub
 }
 } // namespace
 
-TEST_CASE ("PitchDetector: sines 80-1000 Hz within 5 cents (SPEC §7)", "[detector]")
+TEST_CASE ("PitchDetector: sines 80-1000 Hz within 5 cents (SPEC 7)", "[detector]")
 {
     for (const double sr : { 44100.0, 48000.0, 96000.0 })
         for (const double f : { 80.0, 100.0, 150.0, 220.0, 300.0, 440.0, 600.0, 800.0, 1000.0 })
