@@ -46,5 +46,11 @@ int main (int argc, char* argv[])
     setPlain (p, id::mix, 70.0f);
     p.getLocks().setLocked (id::mix, true);
     shoot (p, 1.5f, dir.getChildFile ("ui_link_quantize_lock_150.png"));
+
+    // Extremes of the UI scale with the longest factory preset name and Robot mode.
+    p.getPresets().loadByName (juce::String::fromUTF8 ("Coros con cuerpo (−2 formante)"));
+    setPlain (p, id::mode, 2.0f);
+    shoot (p, 0.75f, dir.getChildFile ("ui_75.png"));
+    shoot (p, 2.0f, dir.getChildFile ("ui_200.png"));
     return 0;
 }

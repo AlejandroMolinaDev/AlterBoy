@@ -12,7 +12,11 @@ add_executable(MetamorfoTests
   unit/EngineTests.cpp
   unit/ModesTests.cpp
   unit/DriveTests.cpp
-  unit/PresetTests.cpp)
+  unit/PresetTests.cpp
+  unit/BypassTests.cpp
+  unit/UiInteractionTests.cpp
+  unit/PresetRobustnessTests.cpp
+  unit/LimitsTests.cpp)
 
 target_compile_definitions(MetamorfoTests PRIVATE
   JUCE_STANDALONE_APPLICATION=1)
@@ -66,3 +70,15 @@ add_test(NAME host_probe_clap COMMAND MetamorfoHostProbe clap "${metamorfo_clap_
 add_executable(MetamorfoScreenshot screenshot/ScreenshotMain.cpp)
 target_compile_definitions(MetamorfoScreenshot PRIVATE JUCE_STANDALONE_APPLICATION=1)
 target_link_libraries(MetamorfoScreenshot PRIVATE metamorfo_core juce::juce_recommended_config_flags)
+
+# Chaos fuzzer (also run by CTest with a short budget; long runs: --episodes N).
+add_executable(MetamorfoFuzz fuzz/FuzzMain.cpp)
+target_compile_definitions(MetamorfoFuzz PRIVATE JUCE_STANDALONE_APPLICATION=1)
+target_link_libraries(MetamorfoFuzz PRIVATE metamorfo_core juce::juce_recommended_config_flags)
+add_test(NAME fuzz_short COMMAND MetamorfoFuzz --seed 7 --episodes 20 --blocks 150)
+
+# Standalone app smoke test (start, run 5 s, terminate cleanly). Windows: CI step.
+if(UNIX)
+  add_test(NAME standalone_smoke
+    COMMAND ${CMAKE_SOURCE_DIR}/tools/ci/standalone_smoke.sh $<TARGET_FILE:Metamorfo_Standalone> 5)
+endif()

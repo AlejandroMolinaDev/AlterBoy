@@ -150,3 +150,20 @@ TEST_CASE ("A/B comparison swaps between two settings", "[presets][ab]")
     presets.toggleAB();
     CHECK (plain (p, id::pitch) == -5.0f);
 }
+
+TEST_CASE ("Locks ignore unknown parameter IDs, so the state stays valid XML", "[presets][locks]")
+{
+    metamorfo::MetamorfoProcessor p;
+    auto& locks = p.getLocks();
+    locks.toggle ("midi reference"); // not an ID (space): must not reach the state
+    locks.toggle ("noExiste");
+    CHECK_FALSE (locks.isLocked ("midi reference"));
+    locks.toggle (metamorfo::params::id::mix);
+    CHECK (locks.isLocked (metamorfo::params::id::mix));
+
+    juce::MemoryBlock state;
+    p.getStateInformation (state);
+    metamorfo::MetamorfoProcessor restored;
+    restored.setStateInformation (state.getData(), static_cast<int> (state.getSize()));
+    CHECK (restored.getLocks().isLocked (metamorfo::params::id::mix));
+}

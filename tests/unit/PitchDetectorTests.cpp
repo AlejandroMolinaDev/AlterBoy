@@ -142,3 +142,16 @@ TEST_CASE ("PitchDetector: estimateAt returns the estimate centred before a time
     const auto lastHop = (d.samplesPushed() / d.hopSamples()) * d.hopSamples();
     CHECK (latest.time == static_cast<double> (lastHop) - d.maxPeriodSamples());
 }
+
+TEST_CASE ("PitchDetector: very high sample rates (176.4-384 kHz) within 5 cents", "[detector][limits]")
+{
+    // The full-rate refinement window is 2 x decimation + 3 lags (73 at 384 kHz).
+    for (const double sr : { 176400.0, 192000.0, 352800.0, 384000.0 })
+        for (const double f : { 80.0, 220.0, 700.0 })
+        {
+            INFO ("sr " << sr << " f " << f);
+            const auto r = analyse (sine (f, 0.5, sr), sr, f);
+            CHECK (r.voicedRatio > 0.95);
+            CHECK (r.maxErrorCents < 5.0);
+        }
+}

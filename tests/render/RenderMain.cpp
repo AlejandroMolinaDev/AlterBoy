@@ -217,6 +217,9 @@ int run (const Options& o)
     int analysisPolls = 0, voicedPolls = 0;
     double peak = 0.0;
     double processSeconds = 0.0;
+    double worstBlockRatio = 0.0; // max(block processing time / block duration): dropout risk
+    std::vector<double> blockRatios;
+    blockRatios.reserve (static_cast<std::size_t> (o.repeat) * static_cast<std::size_t> (numSamples / std::max (1, o.block) + 16));
     int numBlocks = 0, maxBlock = 0;
 
     for (int pass = 0; pass < o.repeat; ++pass)
@@ -259,7 +262,13 @@ int run (const Options& o)
             insideProcessBlock = true;
             processor.processBlock (block, midi);
             insideProcessBlock = false;
-            processSeconds += juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - t0);
+            const double blockSeconds = juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - t0);
+            processSeconds += blockSeconds;
+            if (pass > 0 || o.repeat == 1) // skip the cold first pass of a benchmark
+            {
+                worstBlockRatio = std::max (worstBlockRatio, blockSeconds / (size / sampleRate));
+                blockRatios.push_back (blockSeconds / (size / sampleRate));
+            }
 
             if (pass == o.repeat - 1)
             {
@@ -333,6 +342,14 @@ int run (const Options& o)
     json->setProperty ("process_seconds", processSeconds);
     json->setProperty ("audio_seconds", audioSeconds);
     json->setProperty ("cpu_percent_of_core", 100.0 * processSeconds / audioSeconds);
+    json->setProperty ("worst_block_percent", 100.0 * worstBlockRatio);
+    if (! blockRatios.empty())
+    {
+        std::sort (blockRatios.begin(), blockRatios.end());
+        const auto pct = [&] (double q) { return 100.0 * blockRatios[std::min (blockRatios.size() - 1, static_cast<std::size_t> (q * static_cast<double> (blockRatios.size())))]; };
+        json->setProperty ("block_p99_percent", pct (0.99));
+        json->setProperty ("block_p999_percent", pct (0.999));
+    }
     const auto median = [] (std::vector<double> v) {
         if (v.empty()) return 0.0;
         std::nth_element (v.begin(), v.begin() + static_cast<long> (v.size() / 2), v.end());

@@ -65,6 +65,17 @@ jobs:
       - name: Unit tests + host probes (VST3 / CLAP binaries)
         run: ctest --preset release
 
+      - name: Standalone smoke test (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $app = (Resolve-Path "$env:ARTEFACTS\Standalone\Metamorfo.exe").Path
+          $p = Start-Process $app -PassThru
+          Start-Sleep 5
+          if ($p.HasExited) { throw "Standalone exited early with code $($p.ExitCode)" }
+          Stop-Process -Id $p.Id
+          Write-Host "Standalone smoke test OK"
+
       - name: DSP audit (synthetic signals, fails on any ✘)
         if: runner.os == 'macOS'
         run: |
@@ -72,6 +83,8 @@ jobs:
           .venv-audit/bin/pip install --quiet -r tools/analysis/requirements.txt
           .venv-audit/bin/python tools/analysis/run_audit.py \
             --render build/release/tests/MetamorfoRender --out tests/render/output --phase 7 --fail-on-x
+          .venv-audit/bin/python tools/analysis/quality_matrix.py \
+            --render build/release/tests/MetamorfoRender --out tests/render/output/quality --fail
 
       - name: Upload DSP audit table
         if: runner.os == 'macOS' && always()
@@ -81,6 +94,7 @@ jobs:
           path: |
             tests/render/output/audit_table.md
             tests/render/output/audit_results.json
+            tests/render/output/quality/quality.md
           if-no-files-found: ignore
 
       - name: Ad-hoc code signing (macOS)
@@ -181,6 +195,10 @@ jobs:
           foreach ($f in $vst3, $clap, $app) { if (-not (Test-Path $f)) { throw "missing $f" }; Write-Host "installed: $f" }
           & build\release\tests\MetamorfoHostProbe.exe vst3 $vst3; if ($LASTEXITCODE -ne 0) { throw "probe VST3 failed" }
           & build\release\tests\MetamorfoHostProbe.exe clap $clap; if ($LASTEXITCODE -ne 0) { throw "probe CLAP failed" }
+          # Upgrade path: installing again over an existing installation must work.
+          $p = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "re-install exit code $($p.ExitCode)" }
+          & build\release\tests\MetamorfoHostProbe.exe vst3 $vst3; if ($LASTEXITCODE -ne 0) { throw "probe VST3 after re-install failed" }
           Start-Process "$env:ProgramFiles\Metamorfo\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
           for ($i = 0; $i -lt 30 -and ((Test-Path $vst3) -or (Test-Path $clap) -or (Test-Path $app)); $i++) { Start-Sleep 1 }
           foreach ($f in $vst3, $clap, $app) { if (Test-Path $f) { throw "not removed by the uninstaller: $f" } }
@@ -204,6 +222,7 @@ jobs:
         run: |
           rm -rf ~/Library/Audio/Plug-Ins/Components/Metamorfo.component   # left by the validation step
           sudo installer -pkg dist/Metamorfo-*-macOS.pkg -target /
+          sudo installer -pkg dist/Metamorfo-*-macOS.pkg -target /   # re-install over (upgrade path)
           for f in /Library/Audio/Plug-Ins/VST3/Metamorfo.vst3 /Library/Audio/Plug-Ins/Components/Metamorfo.component \
                    /Library/Audio/Plug-Ins/CLAP/Metamorfo.clap /Applications/Metamorfo.app; do
             test -e "$f" || { echo "missing $f"; exit 1; }
@@ -290,9 +309,10 @@ jobs:
           cmake --preset asan
           cmake --build --preset asan --parallel
           xvfb-run -a ctest --preset asan
+          xvfb-run -a build/asan/tests/MetamorfoFuzz --seed 11 --episodes 40 --blocks 150
 
       - name: ThreadSanitizer
         run: |
           cmake --preset tsan
           cmake --build --preset tsan --target MetamorfoTests --parallel
-          xvfb-run -a ctest --preset tsan -E host_probe
+          xvfb-run -a ctest --preset tsan -E "host_probe|fuzz|standalone"

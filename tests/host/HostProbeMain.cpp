@@ -6,6 +6,8 @@
 //        MetamorfoHostProbe clap <path/to/Metamorfo.clap>
 
 #include <cmath>
+#include <memory>
+#include <vector>
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_events/juce_events.h>
@@ -115,6 +117,69 @@ int runVst3Probe (const std::string& path)
         check (std::abs (second->getParameters()[0]->getValue() - firstParam->getValue()) < 1.0e-6f,
                "state restored into a new instance");
     }
+
+    // Host bypass (B19/B20): with the plug-in's bypass parameter on, the output must be the
+    // input delayed by the reported latency, even with non-neutral settings (pitch +6 above).
+    if (auto* bypass = instance->getBypassParameter(); check (bypass != nullptr, "exposes a host bypass parameter"))
+    {
+        bypass->setValueNotifyingHost (1.0f);
+        float bypassError = 0.0f;
+        for (int block = 100; block < 160; ++block)
+        {
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < 512; ++i)
+                    buffer.setSample (ch, i, signal (ch, block * 512 + i));
+            midi.clear();
+            instance->processBlock (buffer, midi);
+            if (block < 104) // the bypass change is applied at the next process call
+                continue;
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < 512; ++i)
+                    bypassError = std::max (bypassError, std::abs (buffer.getSample (ch, i) - signal (ch, block * 512 + i - latency)));
+        }
+        check (bypassError < 1.0e-6f, "bypassed = input delayed by the latency (max error " + std::to_string (bypassError) + ")");
+        bypass->setValueNotifyingHost (0.0f);
+    }
+
+    // State saved at 48 kHz restored into an instance running at 96 kHz.
+    auto other = format.createInstanceFromDescription (desc, 96000.0, 256, error);
+    if (check (other != nullptr, "instance at 96 kHz created"))
+    {
+        other->setRateAndBufferSizeDetails (96000.0, 256);
+        other->prepareToPlay (96000.0, 256);
+        other->setStateInformation (state.getData(), static_cast<int> (state.getSize()));
+        check (std::abs (other->getParameters()[0]->getValue() - firstParam->getValue()) < 1.0e-6f, "state restored at another sample rate");
+        check (other->getLatencySamples() == 2 * static_cast<int> (std::ceil (96000.0 / 60.0)) + 3, "latency scales with the sample rate (96 kHz)");
+        other->releaseResources();
+    }
+
+    // Many instances of the binary at once (FL Studio projects with many vocal tracks).
+    std::vector<std::unique_ptr<juce::AudioPluginInstance>> many;
+    for (int k = 0; k < 12; ++k)
+        if (auto inst = format.createInstanceFromDescription (desc, 48000.0, 256, error))
+        {
+            inst->setRateAndBufferSizeDetails (48000.0, 256);
+            inst->prepareToPlay (48000.0, 256);
+            many.push_back (std::move (inst));
+        }
+    check (many.size() == 12, "12 instances created");
+    bool manyFinite = true;
+    juce::AudioBuffer<float> small (2, 256);
+    for (int block = 0; block < 40; ++block)
+        for (std::size_t k = 0; k < many.size(); ++k)
+        {
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < 256; ++i)
+                    small.setSample (ch, i, signal (ch + static_cast<int> (k), block * 256 + i));
+            midi.clear();
+            many[k]->processBlock (small, midi);
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < 256; ++i)
+                    manyFinite &= std::isfinite (small.getSample (ch, i));
+        }
+    check (manyFinite, "12 instances process without problems");
+    for (auto& inst : many)
+        inst->releaseResources();
 
     instance->releaseResources();
     return failures() == 0 ? 0 : 1;

@@ -104,3 +104,26 @@ TEST_CASE ("Editor can be opened and closed without touching audio", "[ui]")
     p.processBlock (buffer, midi);
     SUCCEED();
 }
+
+TEST_CASE ("Link snaps to on/off so a state round-trip restores the same value", "[state][link]")
+{
+    // pluginval --randomise sets arbitrary normalised values and compares them after
+    // getStateInformation / setStateInformation.
+    metamorfo::MetamorfoProcessor source;
+    auto* link = source.getParameters().getParameter (metamorfo::params::id::link);
+    REQUIRE (link->isBoolean());
+    CHECK (link->getNumSteps() == 2);
+    for (const float raw : { 0.37f, 0.5f, 0.81f, 0.0f, 1.0f })
+    {
+        link->setValueNotifyingHost (raw);
+        const float before = link->getValue();
+        CHECK ((before == 0.0f || before == 1.0f));
+        juce::MemoryBlock state;
+        source.getStateInformation (state);
+        metamorfo::MetamorfoProcessor target;
+        target.setStateInformation (state.getData(), static_cast<int> (state.getSize()));
+        CHECK (target.getParameters().getParameter (metamorfo::params::id::link)->getValue() == before);
+    }
+    CHECK (link->getText (1.0f, 10) == "On");
+    CHECK (link->getText (0.0f, 10) == "Off");
+}

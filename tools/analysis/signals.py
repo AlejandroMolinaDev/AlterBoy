@@ -80,15 +80,24 @@ def _formant_filter(x: np.ndarray, sr: int, formants=VOWEL_A) -> np.ndarray:
 
 
 def synthetic_voice(f0_curve: np.ndarray, sr: int, vibrato_hz: float = 5.5,
-                    vibrato_cents: float = 0.0, jitter: float = 0.0, seed: int = 3) -> np.ndarray:
+                    vibrato_cents: float = 0.0, jitter: float = 0.0, seed: int = 3,
+                    formant_scale: float = 1.0, breath: float = 0.0) -> np.ndarray:
     rng = np.random.default_rng(seed)
     t = np.arange(len(f0_curve)) / sr
     f0 = f0_curve * 2.0 ** (vibrato_cents / 1200.0 * np.sin(2 * np.pi * vibrato_hz * t))
     if jitter > 0:
         f0 = f0 * (1 + jitter * sps.lfilter([0.01], [1, -0.99], rng.standard_normal(len(f0))))
-    y = _formant_filter(_glottal_train(f0, sr), sr)
+    formants = [(fc * formant_scale, bw * formant_scale) for fc, bw in VOWEL_A]
+    src = _glottal_train(f0, sr)
+    if breath > 0:  # aspiration noise ("air")
+        src = src + breath * np.std(src) * rng.standard_normal(len(src))
+    y = _formant_filter(src, sr, formants)
     y /= np.max(np.abs(y)) + 1e-12
     return (0.5 * y).astype(np.float32)
+
+
+# Voice types for the quality matrix: (name, f0 Hz)
+VOICES = [("grave", 90.0), ("media", 220.0), ("aguda", 350.0), ("infantil", 450.0)]
 
 
 def voice_note(freq: float, seconds: float, sr: int, **kw) -> np.ndarray:

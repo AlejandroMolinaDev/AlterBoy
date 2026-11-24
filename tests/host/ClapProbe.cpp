@@ -3,6 +3,7 @@
 // dialect. It also activates, processes notes and round-trips the state.
 
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <vector>
 
@@ -260,6 +261,82 @@ int runClapProbe (const std::string& path)
     }
     check (processedOk, "process() with note + MIDI events never returns an error");
     check (maxError < 1.0e-6f, "neutral settings = delayed input through the binary (max error " + std::to_string (maxError) + ")");
+
+    // Host bypass through a CLAP bypass parameter, when the plug-in exposes one: delayed
+    // input, even with a non-neutral pitch. The CLAP wrapper in use does not flag any
+    // parameter as bypass, so CLAP hosts bypass on their side (CLAP spec): informative.
+    const auto* params = static_cast<const clap_plugin_params_t*> (plugin->get_extension (plugin, CLAP_EXT_PARAMS));
+    if (check (params != nullptr, "implements clap.params"))
+    {
+        clap_id bypassId = CLAP_INVALID_ID, pitchId = CLAP_INVALID_ID;
+        double pitchMax = 0.0;
+        for (std::uint32_t i = 0; i < params->count (plugin); ++i)
+        {
+            clap_param_info_t info {};
+            if (! params->get_info (plugin, i, &info))
+                continue;
+            if ((info.flags & CLAP_PARAM_IS_BYPASS) != 0)
+                bypassId = info.id;
+            if (std::strcmp (info.name, "Pitch") == 0)
+            {
+                pitchId = info.id;
+                pitchMax = info.max_value;
+            }
+        }
+        if (bypassId == CLAP_INVALID_ID)
+            std::printf ("  INFO  no CLAP bypass parameter: the host bypasses on its side\n");
+        else
+        {
+            float bypassError = 0.0f;
+            for (int block = 50; block < 90; ++block)
+            {
+                for (std::uint32_t i = 0; i < frames; ++i)
+                {
+                    inL[i] = inputL (static_cast<std::int64_t> (block) * frames + i);
+                    inR[i] = inputR (static_cast<std::int64_t> (block) * frames + i);
+                }
+                InputEvents events;
+                if (block == 50)
+                {
+                    const auto paramEvent = [] (clap_id id, double value) {
+                        clap_event_param_value_t e {};
+                        e.header.size = sizeof (e);
+                        e.header.time = 0;
+                        e.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+                        e.header.type = CLAP_EVENT_PARAM_VALUE;
+                        e.param_id = id;
+                        e.note_id = -1;
+                        e.port_index = -1;
+                        e.channel = -1;
+                        e.key = -1;
+                        e.value = value;
+                        return e;
+                    };
+                    events.add (paramEvent (bypassId, 1.0));
+                    if (pitchId != CLAP_INVALID_ID)
+                        events.add (paramEvent (pitchId, pitchMax * 0.5)); // non-neutral pitch
+                }
+                clap_process_t process {};
+                process.steady_time = static_cast<std::int64_t> (block) * frames;
+                process.frames_count = frames;
+                process.audio_inputs = &inBuffer;
+                process.audio_inputs_count = 1;
+                process.audio_outputs = &outBuffer;
+                process.audio_outputs_count = 1;
+                process.in_events = &events.list;
+                process.out_events = &outEvents;
+                processedOk &= plugin->process (plugin, &process) != CLAP_PROCESS_ERROR;
+                if (block < 52 + static_cast<int> (0.02 * 48000.0 / frames)) // 20 ms bypass fade
+                    continue;
+                for (std::uint32_t i = 0; i < frames; ++i)
+                {
+                    const auto n = static_cast<std::int64_t> (block) * frames + i - latency;
+                    bypassError = std::max ({ bypassError, std::abs (outL[i] - inputL (n)), std::abs (outR[i] - inputR (n)) });
+                }
+            }
+            check (bypassError < 1.0e-6f, "bypassed = input delayed by the latency (max error " + std::to_string (bypassError) + ")");
+        }
+    }
 
     plugin->stop_processing (plugin);
     plugin->deactivate (plugin);
