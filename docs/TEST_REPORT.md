@@ -404,3 +404,69 @@ Se implementaron las Fases 2 a 7 sin pausas, a petición tuya. Cada fase se cerr
 ### Lo que sigue sin poder verificarse aquí
 
 Escucha en voz real, prueba en FL Studio y los demás DAWs, tu aprobación visual y el DPI de Windows. La lista completa está en [ROADMAP.md](ROADMAP.md), sección "Pendiente para el lanzamiento".
+
+## 12. Depuración y pruebas completas en automático (2026-11-24)
+
+Pediste un barrido para encontrar **todos** los errores detectables sin un humano, con pruebas que yo mismo pudiera ejecutar, y corregir lo que apareciera. Primero ejecuté las 7 baterías (A a G) sin corregir nada, después corregí cada fallo con su test de regresión y repetí el ciclo completo hasta llegar a 0 fallos.
+
+### Baterías y herramientas nuevas
+
+| Batería | Qué hace | Dónde |
+|---|---|---|
+| **A. Fuzzing** | `MetamorfoFuzz`: secuencias aleatorias deterministas (con semilla) de sample rate (44,1 a 192 kHz, re-prepare en caliente), layout (mono, estéreo, mono→estéreo), bloques de 0 a 4096 (más grandes que el preparado), automatización a velocidad de audio, MIDI denso y basura (1000 a 3000 eventos, CC 120/123, pitch wheel, sysex), estados y presets corruptos, A/B, bloqueos, audio hostil (NaN, Inf, denormales, ±1e30) y bypass. Invariantes por bloque: salida finita y acotada, latencia constante y 0 alocaciones | `tests/fuzz/FuzzMain.cpp`, CTest `fuzz_short`, CI (ASan) |
+| **B. Calidad de audio** | Matriz de 4 voces (grave 90 Hz, media 220, aguda 350, infantil 450) × transponer ±1/3/7/12, formante ±1/3/6/12, Link ±12, **pitch + formante combinados** y Robot, comparadas con la voz ideal re-sintetizada: error de f0, distancia de amplitudes armónicas y HNR | `tools/analysis/quality_matrix.py --fail`, `quality.py`, CI (macOS) |
+| **C. Límites** | f0 de 61 y 1150 Hz, Robot fuera de ×1/8, saltos de octava, glissando de 2 octavas, voz cortada cada 30 ms, 10 min de silencio y luego voz, sample rates de 176,4 a 384 kHz, **soak de 1 hora** (`[.soak]`) y tiempo de CPU **por bloque** (peor, p99 y p99,9) | `tests/unit/LimitsTests.cpp`, `MetamorfoRender` (`block_p99_percent`…) |
+| **D. Host y bypass** | Bypass del host en los 3 layouts, alternado y sin clics; probe del binario VST3 (bypass, estado recargado a 96 kHz, 12 instancias a la vez) y CLAP; pluginval con 4 semillas × `--repeat 3 --randomise` × 4 sample rates × 4 tamaños de bloque; validador VST3 en modo extendido (`-e`); clap-validator | `tests/unit/BypassTests.cpp`, `tests/host/*` |
+| **E. UI y presets** | Eventos de ratón sintéticos sobre el editor real: doble clic, arrastre con y sin Shift, rueda, clic en las marcas de la escala, etiquetas de la palanca, LINK, barra de presets y escala. Parser de valores escritos. Presets malformados, hostiles, con rutas de escape, nombres Unicode largos y carpeta no escribible. Test de que los textos caben en su caja. Capturas al 75 y 200 % | `tests/unit/UiInteractionTests.cpp`, `PresetRobustnessTests.cpp`, `MetamorfoScreenshot` |
+| **F. Análisis estático** | `clang-tidy` (bugprone, cert, concurrency, performance y un subconjunto de cppcoreguidelines), build con clang `-Wall -Wextra -Wshadow -Wconversion -Wsign-conversion` y revisión de código de todo `src/` | `.clang-tidy` |
+| **G. Standalone e instaladores** | Arranque del Standalone 5 s y cierre limpio (Linux, Windows y macOS); en el CI, reinstalación encima (actualización) en Windows y macOS antes de desinstalar | `tools/ci/standalone_smoke.sh`, CTest `standalone_smoke`, `build.yml` |
+
+### Bugs encontrados y corregidos
+
+| ID | Batería | Síntoma | Causa | Corrección | Test de regresión |
+|---|---|---|---|---|---|
+| **B19** | D, A | Al pulsar **bypass** en el DAW la voz se adelantaba 33 ms respecto al resto de la mezcla (PDC roto), los NaN de la entrada pasaban a la salida y en Debug saltaba una aserción de JUCE | No reimplementábamos `processBlockBypassed`; el de JUCE copia la entrada sin retrasarla ni sanearla | `processBlockBypassed` propio: la entrada retrasada exactamente la latencia, saneada, con fundido de 20 ms al activar o desactivar (sin clics). El motor sigue corriendo (CPU constante, retorno sin saltos) | `BypassTests.cpp` (4 casos), probe VST3 del binario, fuzzer |
+| **B20** | D | Bypass en mono→estéreo: el canal derecho quedaba en silencio | Mismo código por defecto de JUCE | Mismo camino que el proceso normal: el seco se duplica en los dos canales | `Bypass keeps both channels for mono -> stereo` |
+| **B21** | E | "Escribir valor…" entendía "3,5" como 3, "−3,5" (signo menos Unicode, como lo muestra la propia UI) como 0, y "abc" como 0 | Se usaba `String::getFloatValue` | `params::parseNumber`: coma decimal, signo − Unicode, unidades ("st", "%", "ms") y rechazo de texto sin número. En la perilla, un texto no numérico deja el valor actual | `Value entry accepts Spanish decimals…`, `…rejects text that is not a number` |
+| **B22** | E | Una categoría ".." (o "../..", "a/../../b") al guardar un preset de usuario podía escribir **fuera** de `Documentos/Metamorfo/Presets` | `createLegalFileName` no elimina ".." | Nombre y categoría saneados a un único componente de ruta (sin separadores, sin puntos ni espacios al inicio o al final, longitud acotada) y verificación de que el destino es hijo de la carpeta de presets | `User preset names and categories cannot escape…` |
+| **B23** | E | Un preset con `value='nan'` dejaba el parámetro en NaN | No se filtraban valores no finitos | Los valores no finitos se ignoran al cargar | `Malformed, foreign or hostile preset files are ignored` |
+| — | E | Guardar un preset en una carpeta no escribible fallaba en silencio | Se ignoraba el resultado de `writeTo` | `saveUserPreset` devuelve un `File` vacío y la UI muestra un aviso | `Saving a user preset reports a folder that cannot be written` |
+| **B24** | E | Si el host imponía un tamaño con otra proporción (p. ej. 2000×900), la UI se recortaba por abajo | La escala se calculaba solo con el ancho | Escala = mín(ancho/780, alto/260) y contenido centrado | `UI scale: 75-200 %, fixed aspect, remembered` (rehecho) |
+| **B25** | E | Tras cambiar la escala, la etiqueta "150 %" mostraba el valor anterior hasta el siguiente tick (se veía en las capturas) | Solo el timer la actualizaba | Se actualiza también en `resized()` | Capturas `ui_75.png` / `ui_200.png` |
+| **B26** | D | pluginval `--randomise` (todas las semillas): el parámetro **Link** no se restauraba igual tras guardar y cargar el estado | `AudioParameterBool` guarda el valor crudo (p. ej. 0,37) pero el estado guarda 0/1 | Parámetro on/off que redondea su valor: mismo ID, posición, textos On/Off, banderas y 2 pasos (contrato congelado intacto) | `Link snaps to on/off so a state round-trip…` |
+| **B27** | F (revisión) | El grano más corto al subir el tono (0,8 periodos, introducido en esta misma batería para mejorar la calidad) abría huecos entre granos si además se subía el formante | La longitud dependía solo del ratio de tono | Longitud mínima formante/ratio periodos: los granos siempre se solapan al menos como antes | Matriz de calidad: 7 combinaciones pitch + formante × 4 voces |
+| **B28** | C | Picos de CPU por bloque a 192 kHz: p99 del 43 % del tiempo del bloque con buffer 64 (y la media al 5 %) | El refinamiento de marcas costaba P²/8 operaciones por marca (1,2 M a 192 kHz con voz grave), todo dentro de un bloque | Correlación con paso proporcional a la frecuencia de muestreo (~24 kHz de resolución) y búsqueda de grueso a fino. A 44,1/48 kHz es idéntico a antes | Auditoría 77/77 y matriz de calidad sin cambios; p99 al 25 % (buffer 64) / 12 % (buffer 128) y media al 3 % |
+
+| **B29** | A (Debug) | Aserción de JUCE en el fuzzer: un bloqueo pedido con un texto que no es un ID (p. ej. "midi reference", con espacio) se guardaba como atributo XML inválido; al recargar, **todo el estado** del proyecto habría sido ilegible. La UI solo pasa IDs válidos, pero la API lo permitía | `ParameterLocks::setLocked` aceptaba cualquier texto | Solo se aceptan IDs de parámetros existentes | `Locks ignore unknown parameter IDs, so the state stays valid XML`; el fuzzer prueba también un ID inválido |
+
+**Mejoras de robustez sin bug observable:**
+- El refinamiento del detector buscaba como máximo 64 lags; a 352,8 y 384 kHz la ventana tiene 73. El error no era medible (los lags cortados están lejos del mínimo), pero ya no hay límite fijo. Test: `PitchDetector: very high sample rates (176.4-384 kHz)`.
+- Limpiezas de `clang-tidy` (8 avisos de conversiones de ancho, sin efecto real) y un miembro sin uso en el editor.
+- Mejora de calidad del motor (Batería B): grano de 0,8 periodos al subir el tono. Reduce un 25 % el error de envolvente en el peor caso.
+
+### Resultados finales (Linux local)
+
+| Prueba | Resultado |
+|---|---|
+| CTest Release | ✔ **95/95** (antes 63): Catch2 + host probes + `fuzz_short` + `standalone_smoke` |
+| Soak de 1 hora (`[.soak]`) | ✔ 172 800 002 aserciones; bit-exacto al volver a neutro tras 1 h |
+| Fuzzer, semilla 2026 | ✔ **105 000 bloques** (700 episodios × 150), 0 fallos, bypass incluido |
+| Auditoría DSP `--phase 7 --fail-on-x` | ✔ 77/77 |
+| Matriz de calidad `--fail` | ✔ **101/101** dentro de umbrales |
+| clang-tidy · clang estricto | ✔ 0 avisos en `src/` tras las limpiezas |
+| ASan/UBSan (CTest + fuzzer en Debug) | ✔ 94/94 + 6000 bloques sin errores ni aserciones (tras B29) · TSan 90/90 (sin host probes, fuzz ni Standalone, como en el CI) |
+| pluginval 10, semillas 1/42/1234/99999 × `--repeat 3 --randomise` × 44,1–192 kHz × bloques 16–4096 | ✔ **SUCCESS en las 4 semillas** (antes fallaba con `--randomise`: B26) |
+| Validador VST3 extendido (`-e`) · clap-validator | ✔ **537/537** · ✔ 18 pasan, 0 fallos, 3 omitidas (preset-discovery) |
+| Standalone (Xvfb) | ✔ arranca, corre 5 s y cierra limpio |
+
+### Límites conocidos (no son bugs; documentados en ROADMAP)
+
+- **Voces muy agudas (450 Hz):** distancia armónica de 6 a 9 dB frente a la voz ideal. TD-PSOLA suaviza la envolvente espectral sobre ±f0 y no puede reproducir formantes más estrechos que la separación entre armónicos. Posible mejora: corrección cepstral de envolvente (pendiente de la Fase 3).
+- **Tono −12 + formante +12** (formante 19 st o más por encima del tono): los granos re-muestreados cubren ~1/4 del periodo de síntesis; distancia armónica de 7,5 a 9,9 dB. Es una combinación extrema; misma mejora posible.
+- **Link −12 y Robot a 450 Hz:** +5,4 ¢ y +4,7 ¢ (dos estimadores coinciden). Inaudible, pero por encima de los 5 ¢ del SPEC para esa voz concreta; las pruebas de aceptación del SPEC (seno y voz media) pasan con menos de 1 ¢.
+- **Bypass en CLAP:** el wrapper CLAP fijado no marca ningún parámetro como bypass, así que los hosts CLAP hacen el bypass por su cuenta (lo permite la especificación CLAP). En VST3, AU y Standalone el bypass es el nuestro (B19). El probe CLAP lo reporta como información.
+- **CPU por bloque:** quedan picos del análisis del detector, cada 128 muestras a 48 kHz (512 a 192 kHz), proporcionales al tamaño del salto y muy por debajo del 100 % en el p99,9. Los "peores bloques" aislados de cientos de % son interrupciones de la VM: varían entre corridas idénticas.
+
+### Lo que sigue necesitando oído humano o FL Studio
+
+Escucha en voz real (sobre todo ±12 st, formante +12 y voces agudas), el bypass en FL con PDC (debería quedar alineado), "Escribir valor…" con coma decimal, guardar un preset con una categoría nueva, y la UI en una pantalla con escalado de Windows.

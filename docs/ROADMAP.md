@@ -46,6 +46,12 @@ La especificación completa está en [SPEC.md](SPEC.md). Este archivo lleva el e
 - **Prueba en FL:** la parte automatizable ya corre en el CI (host probes VST3 y CLAP). Para aceptar la Fase 1 solo falta la "Prueba rápida" de [TESTING_FL.md](TESTING_FL.md).
 - **CI:** la slice x86_64 de macOS solo se verifica con `lipo`, porque el runner es arm64. Probarla en un Mac Intel o con Rosetta cuando sea posible.
 
+- **Depuración completa (2026-11-24, [TEST_REPORT.md](TEST_REPORT.md) §12):** B19 a B29 corregidos. Quedan como límites conocidos, con su posible mejora:
+  - **Calidad en voces agudas (≥ 400 Hz) y en tono −12 + formante +12:** distancia armónica de 6 a 10 dB frente a la voz ideal (TD-PSOLA suaviza la envolvente sobre ±f0). Mejora posible: corrección cepstral de envolvente (va junto con el A/B cepstral de la Fase 3). La matriz `quality_matrix.py` tiene umbrales propios para estos casos y avisará si empeoran.
+  - **Link −12 / Robot a 450 Hz:** +5,4 / +4,7 ¢ (inaudible). Revisar junto con la mejora anterior.
+  - **Bypass en CLAP:** lo hace el host, porque clap-juce-extensions no marca ningún parámetro con `CLAP_PARAM_IS_BYPASS`. Al actualizar el commit fijado, comprobar si ya lo soporta (el probe CLAP lo detecta solo y entonces verifica el retardo).
+  - **CPU por bloque a 192 kHz con buffers de 16:** el p99 llega al 38 % del bloque por el análisis del detector cada 512 muestras. Si algún DAW da dropouts a 192 kHz con buffers mínimos, repartir el análisis entre bloques.
+
 ## Pendiente para el lanzamiento (no automatizable aquí)
 
 - [ ] Prueba en **FL Studio** en Windows (y macOS si es posible): "Prueba rápida" y secciones de las Fases 2 a 6 de [TESTING_FL.md](TESTING_FL.md).
@@ -65,6 +71,7 @@ La especificación completa está en [SPEC.md](SPEC.md). Este archivo lleva el e
 
 | Validador | Prueba | Resultado | Motivo |
 |---|---|---|---|
+| Host probe CLAP | Bypass | Informativo, no es un fallo | El wrapper CLAP no expone parámetro de bypass; el host CLAP hace el bypass (ver límites conocidos). |
 | clap-validator 0.3.2 | `preset-discovery-*` (3) | Omitidas por el validador | El plugin no implementa la fábrica de preset-discovery de CLAP. Se reevaluará en la Fase 6. |
 | pluginval 1.0.4 | Formato CLAP | No aplica | pluginval no carga CLAP ("No types found"). El validador oficial del CLAP es clap-validator. |
 

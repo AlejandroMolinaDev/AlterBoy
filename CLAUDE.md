@@ -30,6 +30,12 @@ ctest --preset release            # unit tests (Linux headless: xvfb-run -a ctes
   CI runs it with `--fail-on-x`; bump `--phase` in build.yml when a phase is closed.
 - Sanitizers (Linux/macOS): `cmake --preset asan|tsan`, build, `xvfb-run -a ctest --preset asan|tsan`
   (tsan: build target MetamorfoTests, run with `-E host_probe`). CI job `linux-sanitizers`.
+- Fuzzer: `MetamorfoFuzz [--seed N] [--episodes N] [--blocks N] [--no-bypass]` (CTest `fuzz_short`;
+  CI runs it under ASan). Invariants: finite bounded output, constant latency, 0 allocations.
+- Quality matrix (numpy + scipy): `python tools/analysis/quality_matrix.py --render <MetamorfoRender>
+  --out tests/render/output/quality --fail` (4 voices x shifts/formant/Link/Robot vs ideal voice; CI).
+- Static analysis: `clang-tidy -p build/release src/**/*.cpp` (config `.clang-tidy`, must stay at 0).
+- Soak (1 h of audio, hidden tag): `MetamorfoTests "[.soak]"`. Standalone smoke: CTest `standalone_smoke`.
 - Installers: `installer/windows/Metamorfo.iss` (Inno Setup 6, built + install-tested in CI),
   `installer/macos/build_pkg.sh <artefacts> <version>` (pkgbuild, install-tested in CI).
 - Host probe: `MetamorfoHostProbe vst3|clap <path>` loads the BUILT binaries like a DAW
@@ -49,6 +55,12 @@ ctest --preset release            # unit tests (Linux headless: xvfb-run -a ctes
   with `setLatencySamples()` in `prepareToPlay`; the dry path is delayed by the same amount.
 - UI reads audio state only through atomics; closing the editor never affects audio.
 - Catch2 test names must be ASCII-only (CTest on Windows mangles non-ASCII filters).
+- Host bypass = our `processBlockBypassed`: input delayed by the latency, 20 ms fade. Never rely on
+  JUCE's default (no delay, no sanitising, mono->stereo silences R).
+- Text typed by users goes through `params::parseNumber` (decimal comma, U+2212 minus, units).
+  Preset names/categories go through `safeComponent` (one path component inside the presets folder).
+- On/off parameters snap their value (`SnappingBoolParameter`); never `AudioParameterBool` (raw values
+  break state round-trips).
 - Tests that delete an editor must call `processor.editorBeingDeleted (editor)` first (JUCE 9 host
   protocol). Test threads must be joined via RAII (`StopAndJoin`), never after a REQUIRE.
 - **Legal (SPEC §1):** no third-party product/brand names in code, UI, presets or user docs.
@@ -79,12 +91,15 @@ src/dsp/          JUCE-free RT DSP (static lib metamorfo_dsp, strict warnings): 
 src/plugin/       PluginProcessor, Parameters, PresetManager (factory/user presets, A/B), ParameterLocks
 src/ui/           PluginEditor (780x260 base canvas, scaled 75-200 %), MetamorfoLookAndFeel,
                   components/ Knob, ToggleLever3, PresetBar + MidiHelpScreen; fonts in resources/fonts (OFL)
-tests/unit/       Catch2 tests (own copy of JUCE + core, custom main with ScopedJuceInitialiser_GUI)
+tests/unit/       Catch2 tests (own copy of JUCE + core, custom main with ScopedJuceInitialiser_GUI),
+                  incl. Bypass, Limits (+ [.soak]), UiInteraction (synthetic mouse), PresetRobustness
+tests/fuzz/       MetamorfoFuzz: seeded chaos fuzzer of the processor
 tests/render/     MetamorfoRender: offline host (WAV in/out, params, MIDI, JSON report, alloc probe)
 tests/screenshot/ MetamorfoScreenshot <dir>: editor PNGs for visual review (docs/images)
 tests/host/       MetamorfoHostProbe: VST3 (JUCE hosting) + minimal CLAP host for the built binaries
-tools/analysis/   Python audit: signals.py (synthetic voice), metrics.py, run_audit.py
-tools/ci/         validation scripts used by CI
+tools/analysis/   Python audit: signals.py (synthetic voice), metrics.py, run_audit.py,
+                  quality.py + quality_matrix.py (voice-type quality matrix)
+tools/ci/         validation scripts used by CI, standalone_smoke.sh, lsan.supp
 installer/        Windows (Inno Setup) and macOS (pkg) installers
 docs/             SPEC, ROADMAP, TESTING_FL, TEST_REPORT, DAW_MATRIX, GUIA_USUARIO_es, images/
 ```
@@ -101,6 +116,8 @@ docs/             SPEC, ROADMAP, TESTING_FL, TEST_REPORT, DAW_MATRIX, GUIA_USUAR
   because `acceptsMidi()` is true. `MidiPitchControl` = last-note-priority stack, fixed storage.
 - License: **AGPLv3** (`LICENSE.md`).
 
-## Validation status (2026-11-24, phase 7, see docs/TEST_REPORT.md)
-CTest 63/63 · DSP audit --phase 7: 77/77 · pluginval 10 (VST3+AU) pass · Steinberg 47/47 · clap-validator
-18/0/3 · auval pass · ASan/UBSan/TSan clean (CI) · CPU worst case ~1.3 % of a core @48k/128, 0 allocs.
+## Validation status (2026-11-24, full debug pass, see docs/TEST_REPORT.md §12)
+CTest 95/95 · fuzz 105k blocks 0 failures · DSP audit --phase 7: 77/77 · quality matrix 101/101 ·
+pluginval 10 (VST3, 4 seeds x randomise x 44.1-192 kHz x blocks 16-4096) + AU pass · Steinberg -e 537/537 ·
+clap-validator 18/0/3 · auval pass · ASan/UBSan/TSan clean · clang-tidy 0 · 1 h soak bit-exact ·
+CPU ~1.3 % of a core @48k/128, 0 allocs.
